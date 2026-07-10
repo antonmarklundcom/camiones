@@ -5,7 +5,8 @@
 > STATUS line below, and commits it. Next session starts by reading this file — no
 > re-discovery from zero.
 >
-> **STATUS: `PHASE 2 — DONE` — last updated 2026-07-10**
+> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` — last updated 2026-07-10**
+> Remaining Phase 4 items are blocked on real data (dealer inventory, verified financing rates) — see Phase 4.
 >
 > Skills to load each session: `nodejs-mysql-hostinger-stack` + `nextjs-deploy-hostinger`
 > (+ `camiones-dev` once it exists, created in Phase 5). Pattern reference: `propia-dev`.
@@ -124,12 +125,31 @@ Follow `nextjs-deploy-hostinger` §1 + §6a exactly:
 - [ ] Record slot used (account + remaining) in Phase 0 line
 - [ ] **Update this file + commit**
 
+## BUILD 3 — Content/guides system (Claude Code, **Opus 4.8, HIGH**) — ✅ DONE 2026-07-10
+
+The codeable half of Phase 4: the `/guias/[slug]` content architecture end-to-end,
+so guides can be written/generated and indexed. (The rest of Phase 4 below is
+blocked on real-world data, not code.)
+
+- [x] Schema: `content_pages` table + migration (`drizzle/0001_*.sql`; kind = guia/marca/categoria, Markdown body, hero image, `source` provenance, `status`+`published_at`, `updated_by`)
+- [x] Public routes (in the `(site)` group): `/guias` index + `/guias/[slug]` detail — Markdown rendered + **sanitised** server-side (`marked` + `sanitize-html`, tag allowlist), `Article` JSON-LD, es-PY meta ≤60/≤155, breadcrumb, brand/category → stock CTA
+- [x] Sitemap: `/guias` + every published guide (shares the published-only rule); "Guías" added to public header nav
+- [x] Admin (admin-only): `/admin/guias` CRUD (shared `ContentForm`, Markdown body, kind-aware brand/category link) + publish/unpublish + single hero upload to R2 (WebP re-encode)
+- [x] `scripts/seed-guides.ts` (`npm run seed:guides`, in `seed:all`): 3 honest starter guides — financing, used-truck checklist, Scania vs Volvo (figures marked referential)
+- [x] `scripts/generate-guides.ts` (`npm run content:guides`): **Anthropic Message Batches API** (`@anthropic-ai/sdk`, `claude-opus-4-8`, structured outputs, voseo system prompt) → writes DRAFTS (`source=anthropic-batch`) for human review in `/admin/guias`; never auto-publishes. Needs `ANTHROPIC_API_KEY` to run.
+- [x] `npm run build` ✅ (typecheck clean; verified against live MariaDB: migrate + seed + `/guias`, `/guias/[slug]`, 404, Markdown/`<table>` render, Article JSON-LD, sitemap inclusion, admin gate)
+
+> **Build-3 notes:** brand hubs (`kind=marca`) and category intros (`kind=categoria`)
+> share the same table/route and link out to matching `/venta` stock; content
+> authorship is admin-only (dealers don't get `/admin/guias`). Guide slugs are
+> stable (never recomputed on edit).
+
 ## Phase 4 — Content, SEO & supply ramp (**Sonnet 4.6, LOW–MED**; Fable 5 HIGH only for content strategy)
 
-- [ ] Import first real inventory (CSV per dealer, `--publish` flag pattern — column contract in `data/ejemplo-inventario.csv`)
-- [ ] Batch content via Anthropic API (propia pattern — batch jobs, never in request path): brand hub pages, buying guides ("Cómo financiar un camión en Paraguay", "Scania vs Volvo usados"), category intros
-- [ ] Verify real financing rates (banks/financieras/AFD-equivalent for commercial vehicles) — **replace the (PLACEHOLDER) programs before launch** and re-run `cron:cuotas`
-- [ ] Replace Demo Dealer sample listings once real inventory exists
+- [ ] Import first real inventory (CSV per dealer, `--publish` flag pattern — column contract in `data/ejemplo-inventario.csv`) — **blocked: needs real dealer data (Phase 0 supply decision)**
+- [x] Batch content via Anthropic API (propia pattern — batch jobs, never in request path): buying guides, brand hubs, category intros — **infra shipped in Build 3** (`content:guides`; run with an API key to generate drafts)
+- [ ] Verify real financing rates (banks/financieras/AFD-equivalent for commercial vehicles) — **replace the (PLACEHOLDER) programs before launch** and re-run `cron:cuotas` — **blocked: needs verified external rates**
+- [ ] Replace Demo Dealer sample listings once real inventory exists — **blocked on real inventory**
 - [ ] GBP not applicable (portal, not local business) but: dealer outreach one-pager using their `/vendedor/[slug]` page as the pitch
 - [ ] **Update this file + commit**
 

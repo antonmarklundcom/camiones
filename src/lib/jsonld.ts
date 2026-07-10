@@ -79,6 +79,35 @@ export function itemListJsonLd(cards: ListingCardData[], name: string): object {
   };
 }
 
+export function articleJsonLd(g: {
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  heroR2Key: string | null;
+  publishedAt: Date | null;
+  updatedAt: Date;
+}): object {
+  const url = absoluteUrl(`/guias/${g.slug}`);
+  const hero = imageUrl(g.heroR2Key);
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: g.title,
+    description: g.excerpt ?? undefined,
+    url,
+    mainEntityOfPage: url,
+    ...(hero ? { image: [hero.startsWith("/") ? absoluteUrl(hero) : hero] } : {}),
+    datePublished: g.publishedAt ? new Date(g.publishedAt).toISOString() : undefined,
+    dateModified: new Date(g.updatedAt).toISOString(),
+    author: { "@type": "Organization", name: "camiones.com.py" },
+    publisher: {
+      "@type": "Organization",
+      name: "camiones.com.py",
+      logo: { "@type": "ImageObject", url: absoluteUrl("/icon.svg") },
+    },
+  };
+}
+
 export function organizationJsonLd(): object {
   return {
     "@context": "https://schema.org",

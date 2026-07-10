@@ -235,3 +235,46 @@ export const financingPrograms = mysqlTable("financing_programs", {
   publishedAt: publishedAt(),
   updatedAt: datetime("updated_at"),
 });
+
+/* ------------------------------------------------------------------ */
+/* Content: SEO guides, brand hubs, category intros (/guias)           */
+/* ------------------------------------------------------------------ */
+
+export const CONTENT_KIND_VALUES = ["guia", "marca", "categoria"] as const;
+export type ContentKind = (typeof CONTENT_KIND_VALUES)[number];
+
+/**
+ * Editorial content behind /guias/[slug] (buying guides), plus optional brand
+ * hubs (kind=marca, linked to a brand) and category intros (kind=categoria).
+ * Body is Markdown, rendered + sanitised server-side. Drafts can be produced by
+ * the Anthropic batch job (scripts/generate-guides.ts) and reviewed in /admin
+ * before publish — `source` records provenance.
+ */
+export const contentPages = mysqlTable(
+  "content_pages",
+  {
+    id: id(),
+    slug: varchar("slug", { length: 180 }).notNull().unique(),
+    kind: mysqlEnum("kind", CONTENT_KIND_VALUES).notNull().default("guia"),
+    title: varchar("title", { length: 200 }).notNull(),
+    // Short summary — doubles as meta description (≤155 shown) and card text.
+    excerpt: varchar("excerpt", { length: 320 }),
+    body: text("body").notNull(), // Markdown
+    heroR2Key: varchar("hero_r2_key", { length: 500 }),
+    // Optional links so brand hubs / category intros can surface matching stock.
+    brandId: fk("brand_id"),
+    category: mysqlEnum("category", CATEGORY_VALUES),
+    source: varchar("source", { length: 40 }).notNull().default("manual"),
+    status: mysqlEnum("status", ["draft", "published"])
+      .notNull()
+      .default("draft"),
+    publishedAt: publishedAt(),
+    createdAt: createdAt(),
+    updatedAt: datetime("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`)
+      .$onUpdate(() => new Date()),
+    updatedBy: fk("updated_by"),
+  },
+  (t) => [index("idx_content_list").on(t.status, t.kind, t.publishedAt)],
+);

@@ -8,9 +8,10 @@ import {
   getActiveSellerSlugs,
   getPublishedListingSlugs,
 } from "@/lib/queries";
+import { getPublishedGuideSlugs } from "@/lib/content/queries";
 import { MIN_INDEXABLE } from "@/lib/indexability";
 import { CATEGORIES, conditionSegment } from "@/lib/taxonomy";
-import { listingPath, sellerPath } from "@/lib/urls";
+import { guidePath, listingPath, sellerPath } from "@/lib/urls";
 
 export interface SitemapEntry {
   path: string;
@@ -49,6 +50,12 @@ export async function buildSitemapEntries(): Promise<SitemapEntry[]> {
   const sellerRows = await getActiveSellerSlugs();
   for (const s of sellerRows) {
     entries.push({ path: sellerPath(s.slug) });
+  }
+
+  const guideRows = await getPublishedGuideSlugs();
+  if (guideRows.length) entries.push({ path: "/guias" });
+  for (const g of guideRows) {
+    entries.push({ path: guidePath(g.slug), lastmod: g.updatedAt });
   }
 
   return entries;
