@@ -1,8 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo } from "next/font/google";
-import { SiteHeader } from "@/components/SiteHeader";
-import { SiteFooter } from "@/components/SiteFooter";
-import { WhatsAppFloat } from "@/components/WhatsAppFloat";
 import { siteOrigin } from "@/lib/urls";
 import "./globals.css";
 
@@ -37,12 +34,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es-PY" className={archivo.variable}>
-      <body className="min-h-screen antialiased">
-        <SiteHeader />
-        <main>{children}</main>
-        <SiteFooter />
-        <WhatsAppFloat />
-      </body>
+      <body className="min-h-screen antialiased">{children}</body>
     </html>
   );
 }
