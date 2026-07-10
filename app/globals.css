@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — industrial + trustworthy (PLAN.md design brief):
+ * charcoal surfaces for header/hero, off-white content background, ONE accent
+ * (amber/safety-yellow) for CTAs and highlights. WhatsApp green is reserved
+ * EXCLUSIVELY for WhatsApp actions — never decorative.
+ */
+@theme {
+  --color-charcoal-950: #15171b;
+  --color-charcoal-900: #1b1e24;
+  --color-charcoal-800: #262a32;
+  --color-charcoal-700: #333845;
+  --color-charcoal-100: #e8e7e3;
+
+  --color-offwhite: #f6f5f2;
+  --color-ink: #1e2228;
+  --color-ink-soft: #5c6370;
+
+  --color-amber-brand: #f5a623;
+  --color-amber-deep: #c77e08;
+  --color-amber-soft: #fdf4e0;
+
+  --color-wa: #25d366;
+  --color-wa-dark: #1eae53;
+
+  /* One Google Font max: Archivo (bold grotesk) for headings; system for body. */
+  --font-heading: var(--font-archivo), "Arial Narrow", ui-sans-serif, system-ui,
+    sans-serif;
+}
+
+body {
+  background-color: var(--color-offwhite);
+  color: var(--color-ink);
+}
+
+.font-heading {
+  font-family: var(--font-heading);
+}
