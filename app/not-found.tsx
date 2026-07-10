@@ -1,8 +1,14 @@
 import Link from "next/link";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 
+// Root-level not-found renders under the bare root layout (the public chrome
+// lives in the (site) group), so it pulls in the header/footer itself.
 export default function NotFound() {
   return (
-    <div className="mx-auto flex max-w-6xl flex-col items-center px-4 py-24 text-center">
+    <>
+      <SiteHeader />
+      <div className="mx-auto flex max-w-6xl flex-col items-center px-4 py-24 text-center">
       <p className="font-heading text-6xl font-extrabold text-amber-brand">404</p>
       <h1 className="mt-4 font-heading text-2xl font-bold text-ink">
         No encontramos esa página
@@ -17,6 +23,8 @@ export default function NotFound() {
       >
         Ver todos los camiones
       </Link>
-    </div>
+      </div>
+      <SiteFooter />
+    </>
   );
 }

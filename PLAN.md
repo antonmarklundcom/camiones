@@ -5,7 +5,7 @@
 > STATUS line below, and commits it. Next session starts by reading this file — no
 > re-discovery from zero.
 >
-> **STATUS: `PHASE 1 — DONE` — last updated 2026-07-10**
+> **STATUS: `PHASE 2 — DONE` — last updated 2026-07-10**
 >
 > Skills to load each session: `nodejs-mysql-hostinger-stack` + `nextjs-deploy-hostinger`
 > (+ `camiones-dev` once it exists, created in Phase 5). Pattern reference: `propia-dev`.
@@ -89,15 +89,26 @@ Everything needed for a browsable, indexable site with seeded data:
 >   financing rates carry "(PLACEHOLDER)" in the DB.
 > - `data/ejemplo-inventario.csv` documents the importer's column contract.
 
-## Phase 2 — BUILD 2: Admin panel + dealer flow (Claude Code, **Opus 4.8, HIGH**) — ONE build
+## Phase 2 — BUILD 2: Admin panel + dealer flow (Claude Code, **Opus 4.8, HIGH**) — ✅ DONE 2026-07-10
 
-- [ ] Auth: iron-session + bcrypt (lighter option per stack skill — no social login needed)
-- [ ] `requireRole()` server-side on every mutation; dealers scoped to `sellerId = session.user.sellerId`
-- [ ] `/admin/listings` CRUD (shared form for create+edit), image upload to R2 with drag-sort (upload helper already in `src/lib/r2.ts`)
-- [ ] `/admin/sellers`, `/admin/users`, publish/unpublish workflow (`status` + `published_at`)
-- [ ] Audit: `updated_by/updated_at` on listings (money-adjacent) — columns exist, wire them
-- [ ] Dealer-facing simplified panel (their listings only)
-- [ ] `npm run build` passes ✅ — **update this file + commit**
+- [x] Auth: iron-session + **bcryptjs** (see deviation note) — encrypted httpOnly cookie, no server-side store
+- [x] `requireUser()`/`requireAdmin()` + `assertCanManageSeller()`/`resolveOwningSeller()` server-side on every mutation; dealers scoped to `sellerId = session.user.sellerId` (verified: dealer can't see/edit/delete another seller's rows, tampered `sellerId` in create is ignored)
+- [x] `/admin/listings` CRUD (shared `ListingForm` for create+edit), image upload to R2 with drag-sort (`ImageManager`, re-encodes to WebP via sharp, uses `src/lib/r2.ts`)
+- [x] `/admin/sellers`, `/admin/users` (admin-only), publish/unpublish + status workflow (`status` + `published_at`, stamped on first publish)
+- [x] Audit: `updated_by`/`updated_at` wired on every listing create/update/status change
+- [x] Dealer-facing panel = same `/admin` tree, seller-scoped (dealers see only their listings + their own seller; no `/admin/users`, no create-seller)
+- [x] `npm run build` passes ✅ (typecheck clean; verified against live MariaDB: migrate + seeds + 17-check server-logic suite + HTTP smoke of auth gate & public routes) — **update this file + commit**
+
+> **Build-2 notes / deviations:**
+> - **bcryptjs, not native `bcrypt`** — avoids compiling a binary addon on Hostinger shared hosting (known deploy trap). Same hashing, pure JS.
+> - **Route groups**: public routes moved into `app/(site)/` (keeps the public header/footer/WhatsApp chrome); the panel lives in `app/(admin)/admin/` with its own chrome. URLs are unchanged. Root `app/layout.tsx` is now bare `<html><body>`; `not-found.tsx` pulls in the site chrome itself.
+> - Login (`/admin/login`) sits OUTSIDE the auth-gated `(panel)` group so it stays reachable while logged out; the `(panel)/layout.tsx` calls `requireUser()` and redirects there.
+> - New env var: **`SESSION_SECRET`** (≥32 chars in prod; dev fallback). Added to `.env.example`.
+> - New script: **`npm run seed:admin`** (`ADMIN_EMAIL`/`ADMIN_PASSWORD` env, idempotent upsert; prints a generated password when unset). Rotate at go-live (Phase 3).
+> - Admin-created listings use public_id `A` + 9 Crockford chars (`src/lib/public-id.ts`); slugs/public_ids are stable and never recomputed on edit.
+> - Uploaded photos are re-encoded to WebP (long edge ≤1600px, q80) at ingest — matches the prepaid-data budget. `sharp` moved to runtime `dependencies`.
+> - Client/server boundary: client-safe status/type constants live in `src/lib/admin/constants.ts` so form components don't pull the `server-only` data layer into the browser bundle. `@app/*` tsconfig alias added for client→action-type imports.
+> - Last-admin safeguard: can't demote/delete the final admin; can't delete your own user.
 
 ## Phase 3 — Deploy & go-live (**Sonnet 4.6, MEDIUM**) — ops session, one command per message (Windows/PowerShell rule)
 
