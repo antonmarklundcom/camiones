@@ -43,6 +43,10 @@ export function sellerPath(slug: string): string {
   return `/vendedor/${slug}`;
 }
 
+export function guidePath(slug: string): string {
+  return `/guias/${slug}`;
+}
+
 /** Canonical origin — host comes from env so staging never leaks into SEO. */
 export function siteOrigin(): string {
   return `https://${process.env.NEXT_PUBLIC_CANONICAL_HOST ?? "camiones.com.py"}`;

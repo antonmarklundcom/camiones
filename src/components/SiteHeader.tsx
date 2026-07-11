@@ -9,6 +9,7 @@ const NAV = [
   { href: "/venta/usados", label: "Usados" },
   { href: "/venta/nuevos", label: "0 km" },
   { href: "/venta", label: "Ver todo" },
+  { href: "/guias", label: "Guías" },
 ];
 
 export function SiteHeader() {
