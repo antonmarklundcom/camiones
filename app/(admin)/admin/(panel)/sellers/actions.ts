@@ -7,6 +7,8 @@ import {
   updateSeller,
   deleteSeller,
   parseSellerForm,
+  setSellerLogo,
+  removeSellerLogo,
 } from "@/lib/admin/sellers";
 
 export interface SellerFormState {
@@ -78,4 +80,36 @@ export async function deleteSellerAction(formData: FormData): Promise<void> {
   }
   revalidatePath("/admin/sellers");
   redirect("/admin/sellers?borrado=1");
+}
+
+/* ---------------------------------- logo ---------------------------------- */
+
+export interface LogoActionState {
+  error?: string;
+  ok?: boolean;
+}
+
+export async function uploadSellerLogoAction(
+  id: number,
+  _prev: LogoActionState,
+  formData: FormData,
+): Promise<LogoActionState> {
+  const user = await requireUser();
+  const file = formData.get("logo");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Elegí una imagen." };
+  }
+  try {
+    await setSellerLogo(user, id, file);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "No se pudo subir el logo." };
+  }
+  revalidatePath(`/admin/sellers/${id}`);
+  return { ok: true };
+}
+
+export async function removeSellerLogoAction(id: number): Promise<void> {
+  const user = await requireUser();
+  await removeSellerLogo(user, id);
+  revalidatePath(`/admin/sellers/${id}`);
 }
