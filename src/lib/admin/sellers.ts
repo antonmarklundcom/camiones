@@ -1,9 +1,11 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { sellers } from "@/db/schema";
 import { slugify } from "@/lib/slug";
+import { uploadToR2 } from "@/lib/r2";
 import type { SessionUser } from "@/lib/auth/session";
 import { assertCanManageSeller } from "@/lib/auth/guard";
 
@@ -159,4 +161,35 @@ export async function deleteSeller(id: number): Promise<void> {
     );
   }
   await db.delete(sellers).where(eq(sellers.id, id));
+}
+
+/** Upload/replace a seller logo (re-encoded to WebP, long edge ≤600 — logos
+ * render small, no need for the 1600px budget used on listing/guide photos). */
+export async function setSellerLogo(
+  user: SessionUser,
+  id: number,
+  file: File,
+): Promise<void> {
+  assertCanManageSeller(user, id);
+  const [current] = await db
+    .select({ slug: sellers.slug })
+    .from(sellers)
+    .where(eq(sellers.id, id))
+    .limit(1);
+  if (!current) throw new Error("La concesionaria no existe.");
+
+  const sharp = (await import("sharp")).default;
+  const webp = await sharp(Buffer.from(await file.arrayBuffer()))
+    .rotate()
+    .resize({ width: 600, height: 600, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: 85 })
+    .toBuffer();
+  const key = `sellers/${current.slug}/logo-${Date.now()}-${randomBytes(3).toString("hex")}.webp`;
+  await uploadToR2(key, webp, "image/webp");
+  await db.update(sellers).set({ logoR2Key: key }).where(eq(sellers.id, id));
+}
+
+export async function removeSellerLogo(user: SessionUser, id: number): Promise<void> {
+  assertCanManageSeller(user, id);
+  await db.update(sellers).set({ logoR2Key: null }).where(eq(sellers.id, id));
 }

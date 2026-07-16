@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/guard";
 import { getAdminSeller, getCityOptions } from "@/lib/admin/queries";
 import { SellerForm } from "@/components/admin/SellerForm";
+import { SellerLogoUpload } from "@/components/admin/SellerLogoUpload";
+import { imageUrl } from "@/lib/r2";
 import { sellerPath } from "@/lib/urls";
 import { updateSellerAction } from "../actions";
 
@@ -39,6 +41,11 @@ export default async function EditSellerPage({
         )}
       </div>
       <h1 className="mb-6 font-heading text-2xl font-bold text-ink">{seller.name}</h1>
+
+      <div className="mb-8 max-w-2xl">
+        <SellerLogoUpload sellerId={seller.id} logoUrl={imageUrl(seller.logoR2Key)} />
+      </div>
+
       <SellerForm
         action={updateSellerAction.bind(null, id)}
         cities={cities}
