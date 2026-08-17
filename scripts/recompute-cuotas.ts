@@ -7,7 +7,7 @@
  *
  * Wire as a Hostinger daily cron after Phase 3 go-live.
  */
-import { eq } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { db } from "../src/db";
 import { financingPrograms, listings } from "../src/db/schema";
 import { bestCuota, type FinancingProgram } from "../src/lib/cuota";
@@ -26,8 +26,19 @@ async function main() {
     active: p.active,
   }));
 
+  // No active programs means no financing offer exists — every cached cuota is
+  // now fiction and MUST be cleared. Exiting early here would leave fabricated
+  // "₲ X/mes" figures on every card indefinitely.
   if (!programs.some((p) => p.active)) {
-    console.log("no active financing programs — nothing to compute");
+    const cleared = await db
+      .update(listings)
+      .set({ cuotaGs: null })
+      .where(isNotNull(listings.cuotaGs));
+    console.log(
+      `no active financing programs — cached cuotas cleared (${
+        (cleared as unknown as { rowsAffected?: number }).rowsAffected ?? "?"
+      } filas)`,
+    );
     process.exit(0);
   }
 

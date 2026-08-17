@@ -22,6 +22,10 @@ export const metadata: Metadata = {
     siteName: "camiones.com.py",
     locale: "es_PY",
     type: "website",
+    // Site-wide fallback: WhatsApp is the primary share channel here and
+    // renders previews imageless without one. Pages with their own image
+    // (listings, guides) override this.
+    images: [{ url: "/og-default.png", width: 1200, height: 630 }],
   },
 };
 

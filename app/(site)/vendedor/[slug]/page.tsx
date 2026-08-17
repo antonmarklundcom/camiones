@@ -24,13 +24,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const seller = await getSellerBySlug(slug);
   if (!seller) return { title: "Vendedor no encontrado" };
   const title = seller.name.length > 42 ? `${seller.name.slice(0, 41).trimEnd()}…` : seller.name;
+  const path = sellerPath(seller.slug);
+  const description = (
+    `Camiones y vehículos de trabajo de ${seller.name}` +
+    `${seller.cityName ? ` en ${seller.cityName}` : ""}. Mirá su stock y consultá por WhatsApp.`
+  ).slice(0, 155);
+  // Seller pages had no openGraph block at all, so WhatsApp shares fell back to
+  // the generic site preview. The seller logo is a poor OG image (transparent,
+  // wrong aspect), so these inherit the site default from the root layout.
   return {
     title,
-    description: (
-      `Camiones y vehículos de trabajo de ${seller.name}` +
-      `${seller.cityName ? ` en ${seller.cityName}` : ""}. Mirá su stock y consultá por WhatsApp.`
-    ).slice(0, 155),
-    alternates: { canonical: sellerPath(seller.slug) },
+    description,
+    alternates: { canonical: path },
+    openGraph: {
+      title: `${title} | camiones.com.py`,
+      description,
+      url: path,
+      type: "profile",
+    },
   };
 }
 
