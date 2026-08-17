@@ -28,9 +28,12 @@ export const metadata: Metadata = {
 
 const TRUST_ITEMS = [
   {
+    // NO claim of "verificados" here: there is no verification field or process
+    // in the schema yet (audit F18). Restore the stronger wording only once
+    // sellers.verifiedAt and a real check exist.
     icon: "✓",
-    title: "Vendedores verificados",
-    text: "Concesionarios y dueños con datos de contacto reales.",
+    title: "Contacto directo",
+    text: "Concesionarias y dueños con sus datos de contacto publicados.",
   },
   {
     icon: "₲",

@@ -24,22 +24,34 @@ export async function buildSitemapEntries(): Promise<SitemapEntry[]> {
 
   const { byCat, byCatBrand, byCatCity, byCatCondition } = await facetCounts();
 
+  // Every path below interpolates catSlug.get(): if the DB enum and the
+  // taxonomy ever drift, an unguarded lookup emits "/venta/undefined" into the
+  // sitemap. Skip and warn instead of publishing a broken URL to crawlers.
+  const seg = (category: string): string | null => {
+    const s = catSlug.get(category as never);
+    if (!s) {
+      console.warn(`[sitemap] categoría sin slug en taxonomy: '${category}' — omitida`);
+      return null;
+    }
+    return s;
+  };
+
   for (const r of byCat) {
-    if (r.n >= MIN_INDEXABLE) entries.push({ path: `/venta/${catSlug.get(r.category)}` });
+    const c = seg(r.category);
+    if (c && r.n >= MIN_INDEXABLE) entries.push({ path: `/venta/${c}` });
   }
   for (const r of byCatBrand) {
-    if (r.n >= MIN_INDEXABLE)
-      entries.push({ path: `/venta/${catSlug.get(r.category)}/${r.brandSlug}` });
+    const c = seg(r.category);
+    if (c && r.n >= MIN_INDEXABLE) entries.push({ path: `/venta/${c}/${r.brandSlug}` });
   }
   for (const r of byCatCity) {
-    if (r.n >= MIN_INDEXABLE)
-      entries.push({ path: `/venta/${catSlug.get(r.category)}/${r.citySlug}` });
+    const c = seg(r.category);
+    if (c && r.n >= MIN_INDEXABLE) entries.push({ path: `/venta/${c}/${r.citySlug}` });
   }
   for (const r of byCatCondition) {
-    if (r.n >= MIN_INDEXABLE)
-      entries.push({
-        path: `/venta/${catSlug.get(r.category)}/${conditionSegment(r.condition)}`,
-      });
+    const c = seg(r.category);
+    if (c && r.n >= MIN_INDEXABLE)
+      entries.push({ path: `/venta/${c}/${conditionSegment(r.condition)}` });
   }
 
   const listingRows = await getPublishedListingSlugs();

@@ -8,7 +8,8 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: "/",
         // /buscar is the form-redirect endpoint — never a destination.
-        disallow: ["/buscar"],
+        // /admin is the private panel (also noindexed via its own layout).
+        disallow: ["/buscar", "/admin"],
       },
     ],
     sitemap: `${siteOrigin()}/sitemap.xml`,

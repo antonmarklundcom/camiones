@@ -23,7 +23,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description = (g.excerpt ?? g.title).slice(0, 155);
   const hero = imageUrl(g.heroR2Key);
   return {
-    title: g.title.slice(0, 60),
+    // 42 chars, matching the seller-page rule: the root layout appends
+    // " | camiones.com.py" (18 chars), so a 60-char slice produced 78-char
+    // <title> tags that search results truncate.
+    title: g.title.length > 42 ? `${g.title.slice(0, 41).trimEnd()}…` : g.title,
     description,
     alternates: { canonical: path },
     openGraph: {

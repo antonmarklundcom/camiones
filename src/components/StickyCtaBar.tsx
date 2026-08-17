@@ -18,8 +18,13 @@ export function StickyCtaBar({
 }) {
   return (
     <>
-      <style>{`@media (max-width: 767px){.wa-float{bottom:6.5rem}}`}</style>
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-charcoal-950 px-4 py-3 md:hidden">
+      {/* The float lift accounts for the bar's own safe-area padding too, so the
+          two never overlap on iOS devices with a gesture bar. */}
+      <style>{`@media (max-width: 767px){.wa-float{bottom:calc(6.5rem + env(safe-area-inset-bottom))}}`}</style>
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-charcoal-950 px-4 pt-3 md:hidden"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
         <div className="flex items-center gap-3">
           <p className="min-w-0 flex-1 font-heading text-lg font-extrabold text-amber-brand">
             {formatUsd(priceUsd)}
