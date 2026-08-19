@@ -16,7 +16,7 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 
 ## Commands
 
-- `npm run dev` / `build` / `typecheck`
+- `npm run dev` / `build` / `typecheck` / `lint` / `test` (vitest, `tests/*.test.ts`)
 - `npm run db:generate` / `db:migrate` (drizzle-kit; migrations in `drizzle/`)
 - `npm run seed:all` (brands, locations, financing, sample listings, guides — idempotent)
 - `npm run seed:admin` (ADMIN_EMAIL/ADMIN_PASSWORD env; re-running WITHOUT env rotates the admin password — known foot-gun, F21)
@@ -73,10 +73,12 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - Titles: root layout `title.template` adds "| camiones.com.py"; pages return
   bare titles; home uses `title.absolute`. Meta ≤60/≤155.
 - Sitemap lists only self-canonicalising URLs (shared rule in `indexability.ts`).
-- **ZERO GitHub Actions minutes.** Never create `.github/workflows/` — not for CI,
-  not for lint/tests, not for deploy (Hostinger builds from a free webhook).
-  Quality gate is the local husky pre-push hook. A workflow needs Anton's
-  explicit case-by-case yes. See the `zero-runner-deploy` skill.
+- **GitHub Actions minutes are budgeted — default is zero.** Never create
+  `.github/workflows/`: not for CI, not for lint/tests, not for deploy
+  (Hostinger builds from a free webhook). The quality gate is the husky
+  pre-push hook (`typecheck → lint → test → build`); a pre-commit hook blocks
+  workflow files from being staged. A workflow needs Anton's explicit yes, and
+  should then be `workflow_dispatch`-only so minutes are never spent per push.
 - PR flow (once Batch 0 lands): squash-merge, pre-push hook green before push,
   auto-merge on (branch protection has NO required status check — there is no CI);
   parallel PRs must rebase after each merge; batch order per PLAN.md Phase 6.

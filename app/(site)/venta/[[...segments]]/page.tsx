@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { countListings, getListingCards, PER_PAGE } from "@/lib/queries";
-import {
-  parseVentaQuery,
-  queryString,
-  resolveSegments,
-  toFilters,
-} from "@/lib/venta-params";
+import { parseVentaQuery, resolveSegments, toFilters } from "@/lib/venta-params";
 import { ventaH1, ventaPath } from "@/lib/urls";
 import { robotsFor, segmentIndexability } from "@/lib/indexability";
 import { ListingCard } from "@/components/ListingCard";
@@ -80,7 +76,7 @@ export default async function VentaPage({ params, searchParams }: Props) {
       <JsonLd data={itemListJsonLd(cards, h1)} />
 
       <nav aria-label="Ruta" className="text-xs text-ink-soft">
-        <a href="/" className="hover:text-amber-deep">Inicio</a>
+        <Link href="/" className="hover:text-amber-deep">Inicio</Link>
         <span aria-hidden="true"> / </span>
         <span>Venta</span>
       </nav>
@@ -108,9 +104,9 @@ export default async function VentaPage({ params, searchParams }: Props) {
           </p>
           <p className="mt-1 text-sm text-ink-soft">
             Probá ampliar el rango de precio o año, o mirá{" "}
-            <a href="/venta" className="font-semibold text-amber-deep hover:underline">
+            <Link href="/venta" className="font-semibold text-amber-deep hover:underline">
               todos los camiones publicados
-            </a>
+            </Link>
             .
           </p>
         </div>

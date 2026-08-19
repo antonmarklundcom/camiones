@@ -1,0 +1,10 @@
+# Workflow files are budgeted, not banned: adding one spends GitHub Actions
+# minutes from a per-account monthly pool, so it needs a deliberate yes.
+# See the budgeted-runner deploy policy.
+if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+  echo ""
+  echo "  BLOCKED: this commit adds a GitHub Actions workflow."
+  echo "  Deploys run on Hostinger via a free webhook and do not need one."
+  echo "  If this is deliberate and approved, commit with --no-verify."
+  exit 1
+fi

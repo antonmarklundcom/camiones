@@ -1,0 +1,9 @@
+# Local quality gate — this repo runs ZERO GitHub Actions minutes by policy
+# (PLAN.md Batch 0), so this hook is the only thing standing between a broken
+# commit and Hostinger auto-deploying main. There is no staging environment.
+npm run typecheck && npm run lint && npm test && npm run build || {
+  echo ""
+  echo "  Quality gate failed — push blocked."
+  echo "  Fix the errors above, or use --no-verify if you know what you are doing."
+  exit 1
+}
