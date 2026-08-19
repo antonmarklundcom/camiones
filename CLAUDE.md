@@ -73,7 +73,12 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - Titles: root layout `title.template` adds "| camiones.com.py"; pages return
   bare titles; home uses `title.absolute`. Meta ≤60/≤155.
 - Sitemap lists only self-canonicalising URLs (shared rule in `indexability.ts`).
-- PR flow (once Batch 0 lands): squash-merge, CI green required, auto-merge on;
+- **ZERO GitHub Actions minutes.** Never create `.github/workflows/` — not for CI,
+  not for lint/tests, not for deploy (Hostinger builds from a free webhook).
+  Quality gate is the local husky pre-push hook. A workflow needs Anton's
+  explicit case-by-case yes. See the `zero-runner-deploy` skill.
+- PR flow (once Batch 0 lands): squash-merge, pre-push hook green before push,
+  auto-merge on (branch protection has NO required status check — there is no CI);
   parallel PRs must rebase after each merge; batch order per PLAN.md Phase 6.
 - Update PLAN.md checkboxes + this file at session end; commit both.
 
@@ -82,5 +87,6 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 See PLAN.md "Decisions Log — 2026-08-19" for the full locked list (leads
 store-then-forward, USD-primary + DB FX, categories table, `staff` role, no
 buyer accounts, fork-per-site template, feature-flag set, ESLint/vitest CI,
-admin-only `featured`, moderated self-serve signup in Batch 6, admin-only
-"add from link" in Batch 7).
+admin-only `featured`, moderated self-serve signup in Batch 6 — every listing
+reviewed, admin-only "add from link" in Batch 7, design pass in Batch 8,
+first-party analytics only — no Google/Plausible scripts at launch).
