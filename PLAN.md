@@ -5,8 +5,10 @@
 > STATUS line below, and commits it. Next session starts by reading this file — no
 > re-discovery from zero.
 >
-> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` — last updated 2026-07-10**
+> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 hardening+template — PLANNED, ready to build` — last updated 2026-08-19**
 > Remaining Phase 4 items are blocked on real data (dealer inventory, verified financing rates) — see Phase 4.
+> **Next work = Phase 6** (batches 0–7 below), driven by `docs/audit-camiones.md` + the Decisions Log.
+> Read `CLAUDE.md` first in every session.
 >
 > Skills to load each session: `nodejs-mysql-hostinger-stack` + `nextjs-deploy-hostinger`
 > (+ `camiones-dev` once it exists, created in Phase 5). Pattern reference: `propia-dev`.
@@ -17,11 +19,11 @@
 
 | Model | Use for | Why |
 |---|---|---|
-| **Fable 5 (high)** | Phase 0 planning, schema/spec review, gap analysis, writing/updating skills, reviewing big diffs before merge | Best reasoning; expensive — don't burn it on mechanical work |
-| **Opus 4.8 (high)** | Phase 1 & 2 (the two big code builds in Claude Code) | Strongest at large multi-file implementation against a fixed spec |
-| **Sonnet 4.6 (low–medium)** | Phase 3 & 4 (deploy ops, seed/import runs, env vars, small fixes, content batch jobs) | Fast + cheap; these steps are procedural, the skills already contain the answers |
+| **Fable 5 (high)** | Planning, schema/spec review, gap analysis, audits, writing/updating skills, reviewing big diffs before merge | Best reasoning; expensive — don't burn it on mechanical work |
+| **Opus 5 (high)** | Phase 6 batches 0–4 + 6 and the template cut (the big code builds) | Strongest at large multi-file implementation against a fixed spec |
+| **Sonnet 5 (low–medium)** | Phase 3 deploy ops, Phase 4 content/seed runs, Phase 6 batches 5 + 7, small fixes | Fast + cheap; these steps are procedural, the skills already contain the answers |
 
-*(Note: there is no "Sonnet 5.0" yet — current Sonnet is 4.6. If a newer Sonnet ships, substitute it in the Sonnet rows.)*
+*(Updated 2026-08-19: Claude 5 family is current — substitute newer models in kind if they ship.)*
 
 **Build philosophy:** as few Claude Code builds as possible = **2 big code builds + 1 ops session + 1 content session**. Each build gets the FULL spec from this file pasted in, plus the guardrails block (bottom of this file).
 
@@ -152,6 +154,53 @@ blocked on real-world data, not code.)
 - [ ] Replace Demo Dealer sample listings once real inventory exists — **blocked on real inventory**
 - [ ] GBP not applicable (portal, not local business) but: dealer outreach one-pager using their `/vendedor/[slug]` page as the pitch
 - [ ] **Update this file + commit**
+
+## Decisions Log — locked 2026-08-19 (Anton + Fable 5)
+
+Business decisions (Anton):
+- **Supply**: dealer outreach + CSV import to launch; self-serve signup built too (see Batch 6); admin "add from link" tool as helper (Batch 7).
+- **Monetization**: free lead-gen for dealers first; featured placement + subscriptions become paid upsells later. Consequence: `featured` becomes **admin-only** (dealers can't self-feature).
+- **Domain/hosting**: camiones.com.py as a Hostinger managed Node.js app (propia pattern). Account/slot/DNS details: record in Phase 3 checklist at deploy time.
+- **Contact endpoints**: no confirmed WhatsApp number or mailbox yet — CTAs must hide gracefully when unset (Batch 1); real endpoints are a go-live gate.
+- **Financing at launch**: hidden behind a feature flag until real verified rates exist. Never show placeholder numbers.
+
+Technical decisions (locked on Fable 5's recommendation):
+- Leads: **store in DB first** (write-ahead log), then forward to GHL with retry; fail loudly in prod when webhook unset.
+- Import identity: plate/dealer-stock-ID CSV column strongly encouraged; without it import runs but **refuses `--publish`**.
+- Import merge policy: import wins price/km/availability; admin wins description/photos/category; first `published_at` always preserved.
+- Currency: USD-primary; ₲ derived from a **DB-stored FX rate**, recomputed on rate change.
+- Scheduled jobs: guarded route handler + external pinger (not per-slot Hostinger cron).
+- Foreign keys: **add real FK constraints** (CASCADE images, RESTRICT seller/brand/location).
+- Interest rates: convention (TEA vs nominal) stored per program, converted in `cuota.ts`.
+- Roles: add **`staff`** (listings/sellers/guias, not users/roles). **No buyer accounts** (WhatsApp-first; favorites via localStorage if ever needed).
+- Verified sellers: `verifiedAt` column + badge now; manual verification process; no automated flow.
+- Template: **GitHub template repo, forked per site** (own repo/DB/slot/legal regime per site). Not multi-host, not npm package.
+- Taxonomy: categories move from schema enum to a **categories table** before the cut.
+- Routes: localized folder names per fork; all links through path helpers.
+- i18n: message catalogue, one locale per fork; visitor-facing switcher only when a site concretely needs it.
+- Feature flags (exactly these, resist more): `financing`, `dualCurrency`, `guides`, `contactChannels`, `verifiedSellers`.
+- Lead sink: config-chosen interface — GHL / VenderCRM / email.
+- Tooling: ESLint; CI = typecheck + build + lint + vitest (money/URL/CSV logic); no Playwright in the merge gate; **squash-merge**; GitHub auto-merge once branch protection is on (Anton flips both settings when the CI PR lands).
+
+---
+
+## Phase 6 — Hardening & template cut (Opus 5 chat = batches 0–4, 6 + cut · Sonnet 5 chat = batches 5, 7 + deploy/content)
+
+Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Already fixed by PR #5: F7, F18, F22, F29, F30, F4-partial.
+**Ordering rule:** Batch 0 first. Batches 1/2/3/5 may run as parallel PR streams (rebase after each auto-merge; never fire all PRs from one stale base). Batch 4 only after 1–3 are merged. Batch 6 after 4. Template cut after 6. Batch 7 any time after 0.
+
+- [ ] **Batch 0 — CI/foundations**: GitHub Actions (typecheck+build+lint+vitest), ESLint config, vitest skeleton for `cuota.ts`/`csv.ts`/`urls.ts`/`venta-params.ts`/`slug.ts`, CLAUDE.md kept current. Then Anton enables branch protection + auto-merge.
+- [ ] **Batch 1 — independent fixes** (one small PR each, parallel): leads write-ahead table + GHL retry (F1), contact-CTA hide/fallback when no phone (F6), session revalidation (F8), rate limit + honeypot (F9), serverActions bodySizeLimit + logo/hero caps (F10), runtime caching (F13), filter indexes (F14), pagination canonicals (F15/F16), users NOT NULL + dealer scope fail-closed (F20), seed-admin `--rotate` guard (F21), slug-namespace uniqueness (F24), status-transition rules + admin-only `featured` (F27).
+- [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
+- [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
+- [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
+- [ ] **Batch 5 — UX wins** (parallel-safe small PRs): sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), `/wa/[publicId]` WhatsApp click tracking (I8), verified-seller badge (I6), capacity/vocation facets (I9, optional).
+- [ ] **Batch 6 — self-serve signup + moderation** (after 4): public "Vendé tu camión" registration (dealers AND particulares), email/WhatsApp-verified accounts, listings + new accounts land in an admin **moderation queue** before publish (wp-to-native-admin pattern).
+- [ ] **Batch 7 — admin "add from link"**: admin-only paste-URL → AI-extracted prefilled draft (title/specs/photos) for review, never auto-publish. Caveats: scraping fragility (FB blocks), only with seller's permission — note in UI.
+- [ ] **Template cut**: new `marketplace-template` repo (GitHub template) from the cleaned tree; strip demo data/truck copy/PY-specific seeds; template README + "new site in one prompt" checklist + which-verticals-fit note; update generic skills with lessons.
+- [ ] **Update this file + commit** at each batch end.
+
+**Go-live gates (unchanged, business-side):** real inventory, real WhatsApp number + mailbox, financing rates verified (or flag stays off), Phase 3 deploy checklist.
 
 ## Phase 5 — Graduate (Fable 5, MEDIUM)
 
