@@ -82,5 +82,6 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 See PLAN.md "Decisions Log — 2026-08-19" for the full locked list (leads
 store-then-forward, USD-primary + DB FX, categories table, `staff` role, no
 buyer accounts, fork-per-site template, feature-flag set, ESLint/vitest CI,
-admin-only `featured`, moderated self-serve signup in Batch 6, admin-only
-"add from link" in Batch 7).
+admin-only `featured`, moderated self-serve signup in Batch 6 — every listing
+reviewed, admin-only "add from link" in Batch 7, design pass in Batch 8,
+first-party analytics only — no Google/Plausible scripts at launch).
