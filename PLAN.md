@@ -182,6 +182,12 @@ Technical decisions (locked on Fable 5's recommendation):
 - Lead sink: config-chosen interface — GHL / VenderCRM / email.
 - Tooling: ESLint; CI = typecheck + build + lint + vitest (money/URL/CSV logic); no Playwright in the merge gate; **squash-merge**; GitHub auto-merge once branch protection is on (Anton flips both settings when the CI PR lands).
 
+Additional decisions (locked 2026-08-19, round 2):
+- **Moderation strictness (Batch 6)**: EVERY listing from self-serve sellers is admin-reviewed before publish — no auto-publish trust level. (Revisit if volume makes it a bottleneck.)
+- **Analytics**: NO third-party analytics at launch — no Google products, no Plausible. Build **first-party analytics** instead (events table: page views, WhatsApp clicks, leads; per-listing/per-seller admin dashboard — extends I8). Keep writes cheap on shared MySQL (async insert, daily aggregation). GA4 may be added later as an optional site.config choice. Phase 3's "GA4/Plausible" line is superseded; Search Console still connected (not analytics).
+- **Design pass**: yes — dedicated batch restyling the public site to the web-design-system floor before launch (truck-vertical palette/type/motion, premium trust feel). Sonnet 5-friendly.
+- **Site #2**: undecided — cut the template generically, pick the first fork later.
+
 ---
 
 ## Phase 6 — Hardening & template cut (Opus 5 chat = batches 0–4, 6 + cut · Sonnet 5 chat = batches 5, 7 + deploy/content)
@@ -194,9 +200,10 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 - [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
 - [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
-- [ ] **Batch 5 — UX wins** (parallel-safe small PRs): sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), `/wa/[publicId]` WhatsApp click tracking (I8), verified-seller badge (I6), capacity/vocation facets (I9, optional).
-- [ ] **Batch 6 — self-serve signup + moderation** (after 4): public "Vendé tu camión" registration (dealers AND particulares), email/WhatsApp-verified accounts, listings + new accounts land in an admin **moderation queue** before publish (wp-to-native-admin pattern).
+- [ ] **Batch 5 — UX wins + first-party analytics** (parallel-safe small PRs): sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6), capacity/vocation facets (I9, optional); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.
+- [ ] **Batch 6 — self-serve signup + moderation** (after 4): public "Vendé tu camión" registration (dealers AND particulares), email/WhatsApp-verified accounts; **every listing** from self-serve sellers goes through the admin moderation queue before publish — no auto-publish trust level (wp-to-native-admin pattern).
 - [ ] **Batch 7 — admin "add from link"**: admin-only paste-URL → AI-extracted prefilled draft (title/specs/photos) for review, never auto-publish. Caveats: scraping fragility (FB blocks), only with seller's permission — note in UI.
+- [ ] **Batch 8 — design pass** (Sonnet 5, before launch): restyle public site to the web-design-system floor — truck-vertical palette, type pairing, card/hero polish, subtle motion, premium trust feel. Must keep the prepaid-data budget (first-load JS ~111 kB) and WhatsApp-green rule intact.
 - [ ] **Template cut**: new `marketplace-template` repo (GitHub template) from the cleaned tree; strip demo data/truck copy/PY-specific seeds; template README + "new site in one prompt" checklist + which-verticals-fit note; update generic skills with lessons.
 - [ ] **Update this file + commit** at each batch end.
 
