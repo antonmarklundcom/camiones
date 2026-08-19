@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { countListings, getListingCards, getSellerBySlug, PER_PAGE } from "@/lib/queries";
 import { sellerPath } from "@/lib/urls";
-import { waLink, waNumber } from "@/lib/whatsapp";
+import { telLink, waLink, waNumber } from "@/lib/whatsapp";
 import { ListingCard } from "@/components/ListingCard";
 import { Pagination } from "@/components/Pagination";
 import { JsonLd } from "@/components/JsonLd";
@@ -58,8 +58,10 @@ export default async function SellerPage({ params, searchParams }: Props) {
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
+  // Null when the seller published no usable number — CTAs hide (audit F6).
   const phoneDigits = waNumber(seller.phoneWhatsapp);
-  const phoneText = seller.phoneDisplay ?? `+${phoneDigits}`;
+  const telHref = telLink(seller.phoneWhatsapp);
+  const phoneText = seller.phoneDisplay ?? (phoneDigits ? `+${phoneDigits}` : null);
   const waHref = waLink(
     seller.phoneWhatsapp,
     `Hola, vi su página en camiones.com.py y quiero consultar por su stock`,
@@ -97,21 +99,25 @@ export default async function SellerPage({ params, searchParams }: Props) {
           </div>
         </div>
         <div className="mt-4 flex gap-2.5 sm:mt-0">
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-12 items-center gap-2 rounded-lg bg-wa px-5 font-heading font-bold text-white transition-colors hover:bg-wa-dark"
-          >
-            <WhatsAppIcon className="h-5 w-5" />
-            Escribinos
-          </a>
-          <a
-            href={`tel:+${phoneDigits}`}
-            className="flex h-12 items-center rounded-lg border border-charcoal-950/20 px-5 font-heading font-bold text-ink hover:border-charcoal-950"
-          >
-            {phoneText}
-          </a>
+          {waHref && (
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 items-center gap-2 rounded-lg bg-wa px-5 font-heading font-bold text-white transition-colors hover:bg-wa-dark"
+            >
+              <WhatsAppIcon className="h-5 w-5" />
+              Escribinos
+            </a>
+          )}
+          {telHref && (
+            <a
+              href={telHref}
+              className="flex h-12 items-center rounded-lg border border-charcoal-950/20 px-5 font-heading font-bold text-ink hover:border-charcoal-950"
+            >
+              {phoneText}
+            </a>
+          )}
         </div>
       </div>
 

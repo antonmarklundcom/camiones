@@ -12,9 +12,11 @@ export function StickyCtaBar({
   telHref,
 }: {
   priceUsd: string | number;
-  waHref: string;
-  telHref: string;
+  waHref: string | null;
+  telHref: string | null;
 }) {
+  if (!waHref && !telHref) return null;
+
   return (
     <>
       {/* The float lift accounts for the bar's own safe-area padding too, so the
@@ -28,21 +30,25 @@ export function StickyCtaBar({
           <p className="min-w-0 flex-1 font-heading text-lg font-extrabold text-amber-brand">
             {formatUsd(priceUsd)}
           </p>
-          <a
-            href={telHref}
-            className="flex h-12 items-center justify-center rounded-lg border border-white/25 px-4 font-heading text-sm font-bold text-white"
-          >
-            Llamanos
-          </a>
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-12 items-center justify-center gap-2 rounded-lg bg-wa px-4 font-heading text-sm font-bold text-white"
-          >
-            <WhatsAppIcon className="h-5 w-5" />
-            WhatsApp
-          </a>
+          {telHref && (
+            <a
+              href={telHref}
+              className="flex h-12 items-center justify-center rounded-lg border border-white/25 px-4 font-heading text-sm font-bold text-white"
+            >
+              Llamanos
+            </a>
+          )}
+          {waHref && (
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 items-center justify-center gap-2 rounded-lg bg-wa px-4 font-heading text-sm font-bold text-white"
+            >
+              <WhatsAppIcon className="h-5 w-5" />
+              WhatsApp
+            </a>
+          )}
         </div>
       </div>
       {/* spacer so page content never hides behind the fixed bar */}

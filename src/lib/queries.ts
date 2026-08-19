@@ -4,6 +4,7 @@
  * filtering anywhere.
  */
 import { and, asc, count, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 import { db } from "@/db";
 import {
   brands,
@@ -118,31 +119,58 @@ export async function getRecentListings(n: number) {
 
 /* ---------------------------- taxonomy lookups --------------------------- */
 
-export async function getPublishedBrands() {
-  return db
-    .select({ id: brands.id, name: brands.name, slug: brands.slug })
-    .from(brands)
-    .where(eq(brands.status, "published"))
-    .orderBy(asc(brands.name));
-}
+/*
+ * Taxonomy changes rarely but is read on nearly every page — /venta alone
+ * loaded the whole brands AND cities tables twice per view (generateMetadata
+ * plus the body), on shared Hostinger MySQL (audit F13).
+ *
+ * Pages stay `force-dynamic` — that is about Hostinger not reaching the DB at
+ * BUILD time, which says nothing about caching at RUNTIME. These wrappers give
+ * a 5-minute TTL and a tag so an admin edit can invalidate immediately via
+ * `revalidateTag(TAXONOMY_TAG)`.
+ */
+export const TAXONOMY_TAG = "taxonomy";
+const TAXONOMY_TTL = 300;
 
-export async function getCities() {
-  return db
-    .select({ id: locations.id, name: locations.name, slug: locations.slug })
-    .from(locations)
-    .where(and(eq(locations.level, "ciudad"), eq(locations.status, "published")))
-    .orderBy(asc(locations.name));
-}
+export const getPublishedBrands = unstable_cache(
+  async () =>
+    db
+      .select({ id: brands.id, name: brands.name, slug: brands.slug })
+      .from(brands)
+      .where(eq(brands.status, "published"))
+      .orderBy(asc(brands.name)),
+  ["published-brands"],
+  { revalidate: TAXONOMY_TTL, tags: [TAXONOMY_TAG] },
+);
 
-/** Published-listing count per category — home tiles + sitemap. */
-export async function categoryCounts(): Promise<Record<string, number>> {
-  const rows = await db
-    .select({ category: listings.category, n: count() })
-    .from(listings)
-    .where(eq(listings.status, "published"))
-    .groupBy(listings.category);
-  return Object.fromEntries(rows.map((r) => [r.category, r.n]));
-}
+export const getCities = unstable_cache(
+  async () =>
+    db
+      .select({ id: locations.id, name: locations.name, slug: locations.slug })
+      .from(locations)
+      .where(and(eq(locations.level, "ciudad"), eq(locations.status, "published")))
+      .orderBy(asc(locations.name)),
+  ["published-cities"],
+  { revalidate: TAXONOMY_TTL, tags: [TAXONOMY_TAG] },
+);
+
+/**
+ * Published-listing count per category — home tiles + sitemap. Cached on a
+ * shorter TTL than the taxonomy itself: it moves whenever a listing is
+ * published, and a slightly stale tile count is harmless.
+ */
+export const categoryCounts = unstable_cache(
+  async (): Promise<Record<string, number>> => {
+    const rows = await db
+      .select({ category: listings.category, n: count() })
+      .from(listings)
+      .where(eq(listings.status, "published"))
+      .groupBy(listings.category);
+    return Object.fromEntries(rows.map((r) => [r.category, r.n]));
+  },
+  ["category-counts"],
+  { revalidate: 60, tags: [TAXONOMY_TAG] },
+);
 
 /* ------------------------------ detail page ------------------------------ */
 
@@ -194,6 +222,30 @@ export async function getListingBySlug(slug: string) {
     .orderBy(asc(images.sortOrder));
 
   return { ...row, images: imgs };
+}
+
+/**
+ * Minimal published-listing lookup by public id, for the contact action.
+ *
+ * The lead form binds a listing argument client-side, which is forgeable — a
+ * crafted submission could otherwise inject an attacker-chosen title and URL
+ * straight into the CRM (audit F9). The action re-reads the listing here and
+ * builds the CRM payload from these values only.
+ */
+export async function getListingForLead(publicId: string) {
+  const [row] = await db
+    .select({
+      id: listings.id,
+      publicId: listings.publicId,
+      slug: listings.slug,
+      title: listings.title,
+      priceUsd: listings.priceUsd,
+      sellerId: listings.sellerId,
+    })
+    .from(listings)
+    .where(and(eq(listings.publicId, publicId), eq(listings.status, "published")))
+    .limit(1);
+  return row ?? null;
 }
 
 /** Active programs for the cuota calculator (placeholder rates until Phase 4). */

@@ -5,8 +5,15 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { leads } from "@/db/schema";
 import { idempotencyKey, pushLead } from "@/lib/crm";
+import { getListingForLead } from "@/lib/queries";
+import { clientIp } from "@/lib/client-ip";
+import { rateLimit } from "@/lib/rate-limit";
 import { absoluteUrl, listingPath } from "@/lib/urls";
 import type { LeadState } from "@/lib/lead";
+
+/** 5 consultas per IP per 10 minutes — generous for a human, useless to a bot. */
+const LEAD_LIMIT = 5;
+const LEAD_WINDOW_MS = 10 * 60 * 1000;
 
 const leadSchema = z.object({
   nombre: z.string().trim().min(2, "Contanos tu nombre").max(140),
@@ -29,16 +36,14 @@ const leadSchema = z.object({
  * failure is recorded on the row for a later retry, never shown to the
  * visitor. A visitor who typed their number and got an error page is a lost
  * customer; a `pending` row is a five-minute fix.
+ *
+ * The bound `publicId` is the ONLY thing trusted from the client, and only as
+ * a lookup key: every value forwarded to the CRM is re-read from the database
+ * (audit F9), so a forged submission cannot inject an attacker-chosen title or
+ * URL into the pipeline.
  */
 export async function enviarConsulta(
-  listing: {
-    id: number;
-    publicId: string;
-    slug: string;
-    title: string;
-    priceUsd: number;
-    sellerId?: number;
-  },
+  bound: { publicId: string },
   _prev: LeadState,
   formData: FormData,
 ): Promise<LeadState> {
@@ -60,9 +65,28 @@ export async function enviarConsulta(
   if (parsed.data.website) return { status: "ok" };
 
   const { nombre, telefono, mensaje } = parsed.data;
+  const h = await headers();
+
+  const limited = rateLimit(`lead:${clientIp(h)}`, LEAD_LIMIT, LEAD_WINDOW_MS);
+  if (!limited.allowed) {
+    return {
+      status: "error",
+      message: "Recibimos varias consultas tuyas — esperá unos minutos o escribinos por WhatsApp.",
+    };
+  }
+
+  // Re-read from the DB: never trust the client-supplied listing (F9).
+  const listing = await getListingForLead(bound.publicId);
+  if (!listing) {
+    return {
+      status: "error",
+      message: "Este aviso ya no está disponible.",
+    };
+  }
+
   const key = idempotencyKey(telefono);
   const pageUrl = absoluteUrl(listingPath(listing.slug));
-  const referrer = (await headers()).get("referer") ?? undefined;
+  const referrer = h.get("referer") ?? undefined;
 
   // 1. Persist. If this throws, the lead genuinely could not be taken.
   let leadId: number;
@@ -75,7 +99,7 @@ export async function enviarConsulta(
         phone: telefono,
         message: mensaje,
         listingId: listing.id,
-        sellerId: listing.sellerId,
+        sellerId: listing.sellerId ?? undefined,
         pageUrl,
         referrer,
         status: "pending",
@@ -107,7 +131,7 @@ export async function enviarConsulta(
       fields: {
         listing_public_id: listing.publicId,
         listing_title: listing.title,
-        listing_price_usd: listing.priceUsd,
+        listing_price_usd: Number(listing.priceUsd),
       },
     },
     key,

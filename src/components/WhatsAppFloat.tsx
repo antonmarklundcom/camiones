@@ -7,9 +7,14 @@ import { WhatsAppIcon } from "@/components/WhatsAppIcon";
  * mobile so the two never overlap.
  */
 export function WhatsAppFloat() {
+  // No valid business number configured yet → no button, rather than one that
+  // opens WhatsApp's error page (audit F6).
+  const href = waLink(null, WA_GENERIC_TEXT);
+  if (!href) return null;
+
   return (
     <a
-      href={waLink(null, WA_GENERIC_TEXT)}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Escribinos por WhatsApp"

@@ -10,7 +10,7 @@ import {
   categoryByValue,
   conditionLabel,
 } from "@/lib/taxonomy";
-import { waLink, waListingText, waNumber } from "@/lib/whatsapp";
+import { telLink, waLink, waListingText, waNumber } from "@/lib/whatsapp";
 import { listingPath, sellerPath, ventaPath, absoluteUrl } from "@/lib/urls";
 import { vehicleJsonLd } from "@/lib/jsonld";
 import { JsonLd } from "@/components/JsonLd";
@@ -63,10 +63,13 @@ export default async function ListingPage({ params }: Props) {
   if (!l) notFound();
 
   const category = categoryByValue(l.category);
+  // Null when the seller has no number and no valid env fallback: every CTA
+  // below is hidden rather than rendered dead (audit F6) — the contact form
+  // stays as the conversion path.
   const waHref = waLink(l.seller.phoneWhatsapp, waListingText(l.title));
   const phoneDigits = waNumber(l.seller.phoneWhatsapp);
-  const telHref = `tel:+${phoneDigits}`;
-  const phoneText = l.seller.phoneDisplay ?? `+${phoneDigits}`;
+  const telHref = telLink(l.seller.phoneWhatsapp);
+  const phoneText = l.seller.phoneDisplay ?? (phoneDigits ? `+${phoneDigits}` : null);
 
   const galleryImages = l.images
     .map((img) => ({ url: imageUrl(img.r2Key)!, alt: img.alt ?? l.title }))
@@ -158,21 +161,31 @@ export default async function ListingPage({ params }: Props) {
             <p className="text-sm text-ink-soft">{formatGs(l.priceGs)}</p>
 
             <div className="mt-5 space-y-2.5">
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-wa font-heading font-bold text-white transition-colors hover:bg-wa-dark"
-              >
-                <WhatsAppIcon className="h-5 w-5" />
-                Escribinos por WhatsApp
-              </a>
-              <a
-                href={telHref}
-                className="flex h-12 w-full items-center justify-center rounded-lg border border-charcoal-950/20 font-heading font-bold text-ink transition-colors hover:border-charcoal-950"
-              >
-                Llamanos · {phoneText}
-              </a>
+              {waHref && (
+                <a
+                  href={waHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-wa font-heading font-bold text-white transition-colors hover:bg-wa-dark"
+                >
+                  <WhatsAppIcon className="h-5 w-5" />
+                  Escribinos por WhatsApp
+                </a>
+              )}
+              {telHref && (
+                <a
+                  href={telHref}
+                  className="flex h-12 w-full items-center justify-center rounded-lg border border-charcoal-950/20 font-heading font-bold text-ink transition-colors hover:border-charcoal-950"
+                >
+                  Llamanos · {phoneText}
+                </a>
+              )}
+              {!waHref && !telHref && (
+                <p className="rounded-lg bg-sand-50 p-3 text-center text-sm text-ink-soft">
+                  Este vendedor no publicó teléfono — escribile con el formulario
+                  de consulta.
+                </p>
+              )}
             </div>
           </div>
 
@@ -200,14 +213,7 @@ export default async function ListingPage({ params }: Props) {
               Consultá por este camión
             </h2>
             <ContactForm
-              action={enviarConsulta.bind(null, {
-                id: l.id,
-                publicId: l.publicId,
-                slug: l.slug,
-                title: l.title,
-                priceUsd: Number(l.priceUsd),
-                sellerId: l.seller?.id,
-              })}
+              action={enviarConsulta.bind(null, { publicId: l.publicId })}
               listingTitle={l.title}
             />
           </div>

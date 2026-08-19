@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
     loader: "custom",
     loaderFile: "./src/lib/image-loader.ts",
   },
+  experimental: {
+    // Next's default is 1 MB, which silently rejected normal phone photos
+    // (2–6 MB) before our own 12 MB check in images.ts could run — audit F10.
+    // Raise deliberately, and keep per-file caps in the upload handlers.
+    serverActions: { bodySizeLimit: "15mb" },
+  },
   // Shared-hosting friendly: standalone output keeps the deployed footprint small.
   output: "standalone",
 };

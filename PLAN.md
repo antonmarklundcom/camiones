@@ -198,7 +198,19 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 **Ordering rule:** Batch 0 first. Batches 1/2/3/5 may run as parallel PR streams (rebase after each auto-merge; never fire all PRs from one stale base). Batch 4 only after 1–3 are merged. Batch 6 after 4. Template cut after 6. Batch 7 any time after 0.
 
 - [x] **Batch 0 — local quality gate/foundations** ✅ DONE 2026-08-19 (PR #7): husky `pre-push` (typecheck → lint → vitest → build) + husky `pre-commit` blocking `.github/workflows/` files; ESLint 9 flat config pinned to the Next 15 line; vitest suite — **61 tests** over `cuota.ts`, `slug.ts`, `csv.ts`, `urls.ts`, `indexability.ts`, `venta-params.ts`. Zero Actions minutes spent. Remaining: Anton enables branch protection (no required status check) + auto-merge.
-- [ ] **Batch 1 — independent fixes** (one small PR each, parallel): leads write-ahead table + VenderCRM forward/retry (F1) ✅, contact-CTA hide/fallback when no phone (F6), session revalidation (F8), rate limit + honeypot (F9), serverActions bodySizeLimit + logo/hero caps (F10), runtime caching (F13), filter indexes (F14), pagination canonicals (F15/F16), users NOT NULL + dealer scope fail-closed (F20), seed-admin `--rotate` guard (F21), slug-namespace uniqueness (F24), status-transition rules + admin-only `featured` (F27).
+- [ ] **Batch 1 — independent fixes** (one small PR each, parallel):
+  - [x] leads write-ahead table + VenderCRM forward/retry (F1)
+  - [x] contact-CTA hide/fallback when no phone (F6)
+  - [x] rate limit + honeypot + server-side listing re-read (F9)
+  - [x] serverActions bodySizeLimit 15mb (F10) — logo/hero per-file caps still open
+  - [x] runtime caching: taxonomy + category counts via `unstable_cache` (F13)
+  - [ ] session revalidation (F8)
+  - [ ] filter indexes (F14)
+  - [ ] pagination canonicals (F15/F16)
+  - [ ] users NOT NULL + dealer scope fail-closed (F20)
+  - [ ] seed-admin `--rotate` guard (F21)
+  - [ ] slug-namespace uniqueness (F24)
+  - [ ] status-transition rules + admin-only `featured` (F27)
 - [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
 - [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
