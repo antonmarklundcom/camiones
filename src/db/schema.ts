@@ -142,6 +142,52 @@ export const images = mysqlTable(
   (t) => [index("idx_listing").on(t.listingId, t.sortOrder)],
 );
 
+export const LEAD_STATUS_VALUES = ["pending", "sent", "failed"] as const;
+export type LeadStatus = (typeof LEAD_STATUS_VALUES)[number];
+
+/**
+ * Leads are STORED FIRST, then forwarded to the CRM (audit F1). The row is the
+ * write-ahead log: if VenderCRM is unreachable, the lead is still ours and
+ * `status` stays 'pending' for a retry. Nothing about the visitor's response
+ * depends on the forward succeeding.
+ */
+export const leads = mysqlTable(
+  "leads",
+  {
+    id: id(),
+    // Stable per submission; also sent to the CRM so a retry cannot duplicate.
+    idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull().unique(),
+
+    name: varchar("name", { length: 140 }).notNull(),
+    phone: varchar("phone", { length: 30 }).notNull(),
+    message: varchar("message", { length: 1000 }).notNull(),
+
+    // Nullable: a lead can come from a seller page with no listing attached.
+    listingId: fk("listing_id"),
+    sellerId: fk("seller_id"),
+    pageUrl: varchar("page_url", { length: 2000 }),
+    referrer: varchar("referrer", { length: 2000 }),
+
+    utmSource: varchar("utm_source", { length: 200 }),
+    utmMedium: varchar("utm_medium", { length: 200 }),
+    utmCampaign: varchar("utm_campaign", { length: 200 }),
+
+    status: mysqlEnum("status", LEAD_STATUS_VALUES).notNull().default("pending"),
+    attempts: tinyint("attempts", { unsigned: true }).notNull().default(0),
+    lastError: varchar("last_error", { length: 500 }),
+    // Ids returned by VenderCRM, so a lead can be traced into the pipeline.
+    crmContactId: varchar("crm_contact_id", { length: 64 }),
+    crmDealId: varchar("crm_deal_id", { length: 64 }),
+
+    createdAt: createdAt(),
+    sentAt: datetime("sent_at"),
+  },
+  (t) => [
+    index("idx_status").on(t.status, t.createdAt),
+    index("idx_listing").on(t.listingId),
+  ],
+);
+
 /* ------------------------------------------------------------------ */
 /* Taxonomy: brands + hierarchical locations                           */
 /* ------------------------------------------------------------------ */

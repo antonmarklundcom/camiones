@@ -30,6 +30,15 @@ export function ContactForm({
 
   return (
     <form action={formAction} className="space-y-3" aria-label="Formulario de consulta">
+      {/* Honeypot — bots fill every field they can find; humans never see it. */}
+      <input
+        type="text"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="absolute -left-[9999px]"
+      />
       <div>
         <label htmlFor="lead-nombre" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft">
           Nombre

@@ -42,9 +42,11 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 
 ## Deliberate non-features & traps (do not "fix" casually)
 
-- **Leads are NOT stored in the DB** — fire-and-forget GHL webhook (`src/lib/crm.ts`).
-  This is audit F1 (P0) and changes in Batch 1 to store-then-forward. Until then:
-  unset `GHL_WEBHOOK_URL` in prod silently drops leads while reporting success.
+- **Leads are stored first, then forwarded** (`leads` table → VenderCRM, see
+  `src/lib/crm.ts`). This was audit F1 (P0), fixed in Batch 1. GHL is retired —
+  never reintroduce it. A CRM outage leaves the row `pending` for a retry; the
+  visitor always sees success because the lead is already ours. The API key is
+  server-side only (`VENDERCRM_API_KEY`) and never reaches the browser.
 - **No FK constraints** — integrity is app-side until Batch 4 adds real FKs.
 - **Financing rates are PLACEHOLDERS** ("(PLACEHOLDER)" in DB names). Decision:
   financing hides behind a feature flag until real verified rates exist. Never

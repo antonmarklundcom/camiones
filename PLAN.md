@@ -49,7 +49,7 @@
 - `users`: with `role` enum `admin | dealer` from day one (stack skill §1.5)
 - `financing_programs`: propia pattern — rates are PLACEHOLDERS (name-suffixed "(PLACEHOLDER)"; BLOCKER: verify real rates before launch)
 - `images`: listing_id, r2_key, sort_order
-- `leads` NOT stored — fire GHL webhook only (propia pattern)
+- `leads` NOT stored — fire GHL webhook only (propia pattern) — **superseded**: leads are stored then forwarded to VenderCRM (Batch 1)
 - Every public-facing table carries `status` + `published_at`
 
 ### Routes (SEO architecture) — as built
@@ -165,7 +165,7 @@ Business decisions (Anton):
 - **Financing at launch**: hidden behind a feature flag until real verified rates exist. Never show placeholder numbers.
 
 Technical decisions (locked on Fable 5's recommendation):
-- Leads: **store in DB first** (write-ahead log), then forward to GHL with retry; fail loudly in prod when webhook unset.
+- Leads: **store in DB first** (write-ahead log), then forward to **VenderCRM** with retry; fail loudly in prod when the CRM env is unset.
 - Import identity: plate/dealer-stock-ID CSV column strongly encouraged; without it import runs but **refuses `--publish`**.
 - Import merge policy: import wins price/km/availability; admin wins description/photos/category; first `published_at` always preserved.
 - Currency: USD-primary; ₲ derived from a **DB-stored FX rate**, recomputed on rate change.
@@ -179,10 +179,11 @@ Technical decisions (locked on Fable 5's recommendation):
 - Routes: localized folder names per fork; all links through path helpers.
 - i18n: message catalogue, one locale per fork; visitor-facing switcher only when a site concretely needs it.
 - Feature flags (exactly these, resist more): `financing`, `dualCurrency`, `guides`, `contactChannels`, `verifiedSellers`.
-- Lead sink: config-chosen interface — GHL / VenderCRM / email.
+- Lead sink: **VenderCRM** (`POST /api/v1/leads`, per-site `X-Api-Key`, `idempotency_key` required). GHL is retired — Anton no longer uses it. The template keeps a config-chosen sink interface (VenderCRM / email) so a fork can differ.
 - Tooling: ESLint; quality gate = typecheck + build + lint + vitest (money/URL/CSV logic), run **locally via a husky pre-push hook — NOT GitHub Actions**; no Playwright. **Squash-merge**; branch protection without a required-status check (there is no CI to require).
 
 Additional decisions (locked 2026-08-19, round 2):
+- **CRM / lead sink: VenderCRM, GHL retired.** Anton stopped using GoHighLevel, so every GHL reference is removed from code, env and docs. Leads POST to VenderCRM `/api/v1/leads` with a per-site `X-Api-Key` held server-side only, a required `idempotency_key`, and no pipeline/stage/owner in the payload (routing lives on the site record in the CRM). Attribution via the `vc_attr` cookie is a later add-on.
 - **CI / GitHub Actions**: **budgeted, default zero.** No `.github/workflows/` here or in any fork of the template unless Anton explicitly approves one. Correctness is enforced by a local husky pre-push hook (faster anyway: warm `node_modules` + `.next/cache`); deploys run on Hostinger's build servers via webhook, which is free and never appears in Actions billing. If CI is ever wanted here, add it as `workflow_dispatch`-only (manual trigger) so minutes are spent deliberately, never per push. Account backstops: billing spending limit, Actions disabled per repo, Copilot code review off on private repos.
 - **Moderation strictness (Batch 6)**: EVERY listing from self-serve sellers is admin-reviewed before publish — no auto-publish trust level. (Revisit if volume makes it a bottleneck.)
 - **Analytics**: NO third-party analytics at launch — no Google products, no Plausible. Build **first-party analytics** instead (events table: page views, WhatsApp clicks, leads; per-listing/per-seller admin dashboard — extends I8). Keep writes cheap on shared MySQL (async insert, daily aggregation). GA4 may be added later as an optional site.config choice. Phase 3's "GA4/Plausible" line is superseded; Search Console still connected (not analytics).
@@ -197,7 +198,7 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 **Ordering rule:** Batch 0 first. Batches 1/2/3/5 may run as parallel PR streams (rebase after each auto-merge; never fire all PRs from one stale base). Batch 4 only after 1–3 are merged. Batch 6 after 4. Template cut after 6. Batch 7 any time after 0.
 
 - [x] **Batch 0 — local quality gate/foundations** ✅ DONE 2026-08-19 (PR #7): husky `pre-push` (typecheck → lint → vitest → build) + husky `pre-commit` blocking `.github/workflows/` files; ESLint 9 flat config pinned to the Next 15 line; vitest suite — **61 tests** over `cuota.ts`, `slug.ts`, `csv.ts`, `urls.ts`, `indexability.ts`, `venta-params.ts`. Zero Actions minutes spent. Remaining: Anton enables branch protection (no required status check) + auto-merge.
-- [ ] **Batch 1 — independent fixes** (one small PR each, parallel): leads write-ahead table + GHL retry (F1), contact-CTA hide/fallback when no phone (F6), session revalidation (F8), rate limit + honeypot (F9), serverActions bodySizeLimit + logo/hero caps (F10), runtime caching (F13), filter indexes (F14), pagination canonicals (F15/F16), users NOT NULL + dealer scope fail-closed (F20), seed-admin `--rotate` guard (F21), slug-namespace uniqueness (F24), status-transition rules + admin-only `featured` (F27).
+- [ ] **Batch 1 — independent fixes** (one small PR each, parallel): leads write-ahead table + VenderCRM forward/retry (F1) ✅, contact-CTA hide/fallback when no phone (F6), session revalidation (F8), rate limit + honeypot (F9), serverActions bodySizeLimit + logo/hero caps (F10), runtime caching (F13), filter indexes (F14), pagination canonicals (F15/F16), users NOT NULL + dealer scope fail-closed (F20), seed-admin `--rotate` guard (F21), slug-namespace uniqueness (F24), status-transition rules + admin-only `featured` (F27).
 - [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
 - [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).

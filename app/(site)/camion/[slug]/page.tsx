@@ -201,10 +201,12 @@ export default async function ListingPage({ params }: Props) {
             </h2>
             <ContactForm
               action={enviarConsulta.bind(null, {
+                id: l.id,
                 publicId: l.publicId,
                 slug: l.slug,
                 title: l.title,
                 priceUsd: Number(l.priceUsd),
+                sellerId: l.seller?.id,
               })}
               listingTitle={l.title}
             />

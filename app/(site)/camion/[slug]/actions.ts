@@ -1,6 +1,10 @@
 "use server";
 import { z } from "zod";
-import { pushLead } from "@/lib/crm";
+import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { leads } from "@/db/schema";
+import { idempotencyKey, pushLead } from "@/lib/crm";
 import { absoluteUrl, listingPath } from "@/lib/urls";
 import type { LeadState } from "@/lib/lead";
 
@@ -13,16 +17,28 @@ const leadSchema = z.object({
     .max(30)
     .regex(/^[0-9+\s()-]+$/, "Dejanos un teléfono válido"),
   mensaje: z.string().trim().min(2, "Escribí tu consulta").max(1000),
+  // Honeypot: bots fill every field they can see. Humans never touch this one.
+  website: z.string().max(0).optional().or(z.literal("")),
 });
 
 /**
- * Contact-form server action: validates the 3 fields and fires the GHL
- * webhook. Leads are NEVER stored in our DB (PLAN.md) — GHL is the CRM of
- * record; without GHL_WEBHOOK_URL the lead logs to console and still
- * succeeds so a config gap never breaks the form.
+ * Contact-form server action — STORE, then forward (audit F1).
+ *
+ * The lead is written to our `leads` table first, so it is ours even if the
+ * CRM is down or misconfigured; the VenderCRM call is best-effort and its
+ * failure is recorded on the row for a later retry, never shown to the
+ * visitor. A visitor who typed their number and got an error page is a lost
+ * customer; a `pending` row is a five-minute fix.
  */
 export async function enviarConsulta(
-  listing: { publicId: string; slug: string; title: string; priceUsd: number },
+  listing: {
+    id: number;
+    publicId: string;
+    slug: string;
+    title: string;
+    priceUsd: number;
+    sellerId?: number;
+  },
   _prev: LeadState,
   formData: FormData,
 ): Promise<LeadState> {
@@ -30,6 +46,7 @@ export async function enviarConsulta(
     nombre: formData.get("nombre"),
     telefono: formData.get("telefono"),
     mensaje: formData.get("mensaje"),
+    website: formData.get("website") ?? "",
   });
   if (!parsed.success) {
     return {
@@ -38,19 +55,85 @@ export async function enviarConsulta(
     };
   }
 
-  const result = await pushLead({
-    name: parsed.data.nombre,
-    phone: parsed.data.telefono,
-    message: parsed.data.mensaje,
-    listing: {
-      publicId: listing.publicId,
-      title: listing.title,
-      url: absoluteUrl(listingPath(listing.slug)),
-      priceUsd: listing.priceUsd,
-    },
-  });
+  // Honeypot tripped: report success and post nothing. Telling a bot it was
+  // detected only teaches whoever wrote it to fix the bot.
+  if (parsed.data.website) return { status: "ok" };
 
-  return result.ok
-    ? { status: "ok" }
-    : { status: "error", message: "No pudimos enviar tu consulta — probá de nuevo o escribinos por WhatsApp." };
+  const { nombre, telefono, mensaje } = parsed.data;
+  const key = idempotencyKey(telefono);
+  const pageUrl = absoluteUrl(listingPath(listing.slug));
+  const referrer = (await headers()).get("referer") ?? undefined;
+
+  // 1. Persist. If this throws, the lead genuinely could not be taken.
+  let leadId: number;
+  try {
+    const [row] = await db
+      .insert(leads)
+      .values({
+        idempotencyKey: key,
+        name: nombre,
+        phone: telefono,
+        message: mensaje,
+        listingId: listing.id,
+        sellerId: listing.sellerId,
+        pageUrl,
+        referrer,
+        status: "pending",
+      })
+      .$returningId();
+    leadId = row.id;
+  } catch (e) {
+    // A duplicate key means this exact submission is already stored — the
+    // visitor double-clicked. That is a success from their point of view.
+    const existing = await db.query.leads
+      .findFirst({ where: eq(leads.idempotencyKey, key) })
+      .catch(() => undefined);
+    if (existing) return { status: "ok" };
+    console.error("[lead] no se pudo guardar el lead:", e);
+    return {
+      status: "error",
+      message: "No pudimos enviar tu consulta — probá de nuevo o escribinos por WhatsApp.",
+    };
+  }
+
+  // 2. Forward, best-effort. The visitor's result does not depend on this.
+  const result = await pushLead(
+    {
+      name: nombre,
+      phone: telefono,
+      message: mensaje,
+      pageUrl,
+      referrer,
+      fields: {
+        listing_public_id: listing.publicId,
+        listing_title: listing.title,
+        listing_price_usd: listing.priceUsd,
+      },
+    },
+    key,
+  );
+
+  await db
+    .update(leads)
+    .set(
+      result.ok
+        ? {
+            status: "sent",
+            attempts: 1,
+            sentAt: new Date(),
+            crmContactId: result.contactId,
+            crmDealId: result.dealId,
+          }
+        : {
+            // Retryable failures stay 'pending' for the retry sweep; permanent
+            // ones (bad key, validation) are 'failed' and need a human.
+            status: result.retryable ? "pending" : "failed",
+            attempts: 1,
+            lastError: result.error.slice(0, 500),
+          },
+    )
+    .where(eq(leads.id, leadId))
+    .catch((e) => console.error("[lead] no se pudo actualizar el estado:", e));
+
+  return { status: "ok" };
 }
