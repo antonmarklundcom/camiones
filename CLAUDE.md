@@ -25,7 +25,8 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - `npm run seed:admin` (ADMIN_EMAIL/ADMIN_PASSWORD env). Creating a NEW admin is
   the default; touching an EXISTING user needs `-- --rotate` AND an explicit
   ADMIN_PASSWORD, and it announces any role promotion (F21 fixed).
-- `npm run import:csv` (CSV contract: `data/ejemplo-inventario.csv`)
+- `npm run import:csv -- <file.csv> <seller-slug> [--dry-run] [--publish] [--create-seller]`
+  (contract: `data/ejemplo-inventario.csv` + `data/README-import.md`). ALWAYS `--dry-run` first.
 - `npm run cron:cuotas`, `npm run content:guides` (Anthropic batch → drafts only)
 - tsx does NOT auto-load `.env` — set `DATABASE_URL` in the shell for scripts.
 
@@ -35,6 +36,7 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `/camion/[slug]`, `/vendedor/[slug]`, `/guias`, `/buscar` (no-JS GET → 302 to
   canonical segment URL, robots-disallowed).
 - `app/(admin)/admin/` panel; `login/` sits outside the auth-gated `(panel)` group.
+- `src/lib/import/` the CSV importer's plan/commit engine (see traps below).
 - `src/lib/` engine logic: `queries.ts` (all public reads), `venta-params.ts`
   (segment-URL resolution — category/brand/city/condition share one namespace by
   precedence), `indexability.ts` (shared page/sitemap contract), `urls.ts`,
@@ -42,7 +44,9 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - `src/lib/auth/`: iron-session + bcryptjs (NOT native bcrypt — Hostinger can't
   compile addons). Every server action self-guards (`requireUser`/`requireAdmin`,
   `assertCanManageSeller`); dealers scoped to their `sellerId`.
-- `src/db/schema.ts`: 8 tables. Roles: `admin | dealer` (staff planned, Batch 4).
+- `src/db/schema.ts`: 10 tables. Roles: `admin | dealer` (staff planned, Batch 4).
+  `import_jobs`/`import_rows` are the import journal (Batch 2, `drizzle/0003_*`);
+  `listings.external_id` is the dealer's own chapa/stock ID.
 - Uploads re-encode to WebP via sharp at ingest (long edge ≤1600, q80).
 
 ## Deliberate non-features & traps (do not "fix" casually)
@@ -58,10 +62,32 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `cron:cuotas` (not yet wired to any scheduler; Batch 3 wires a guarded route +
   external pinger). FX rate is a static env `USD_TO_PYG` until Batch 3 moves it
   to the DB.
-- **Import re-runs are dangerous** (F2/F3/F12): identity key includes `km`
-  (mileage update ⇒ duplicate listing), re-run without `--publish` demotes
-  published rows, no transactions/journal/dry-run. Batch 2 rebuilds this.
-  Until then: never re-run an import against real data without reading the audit.
+- **The importer is safe now, and its rules are load-bearing** (F2/F3/F12/F28 fixed
+  in Batch 2). `scripts/import-csv.ts` is a thin CLI over `src/lib/import/`:
+  `contract.ts` (CSV → validated row) → `identity.ts` → `plan.ts` (`buildPlan()`,
+  pure, the whole decision layer) → `run.ts` (`commitPlan()`, DB + journal).
+  `--dry-run` calls the SAME `buildPlan()` and only skips writes — do NOT grow a
+  second validation path, that's the bug this replaced.
+  - Identity is `sha1(v2|seller|ext:<chapa|stock_id>)` when the dealer gives an
+    anchor, else `sha1(v2|seller|brand|model|year)`. **`km` and price are
+    deliberately NOT in the key** — a mileage update must update, never duplicate.
+  - Anchorless runs work but **refuse `--publish`** (two identical trucks from one
+    dealer would collapse into one row). The refusal is a blocker: nothing is
+    written at all.
+  - On update, `status`/`published_at` are untouched unless the CSV carries an
+    `estado` column. The first `published_at` is never re-stamped. `vendido` →
+    `disponible` routes back through `draft` (F27), never straight to published.
+  - Merge policy: import wins price/km/year/specs/availability; admin wins
+    `description`/`category`/photos — **gated on `listings.updated_by != null`**,
+    i.e. once a human saved the row in /admin. An empty `fotos` column never
+    deletes a gallery.
+  - The seller must already exist. `--create-seller` is the opt-in and creates a
+    **draft** seller with no phone, so a typo'd slug can't mint a published dealer.
+  - Every run (dry runs included) is journalled in `import_jobs`/`import_rows`
+    with `previous_json` = the pre-change row. Each row is its own transaction;
+    any errored row makes the process exit non-zero.
+  - `publicId` is generated independently and checked against the DB (F28) — never
+    sliced off the import key again.
 - **Sessions no longer bake in privileges** (F8 fixed): the cookie is only a
   claim of identity — `getCurrentUser()` re-reads the user row on every guarded
   request and takes role/sellerId from the DB. One indexed PK read; do NOT cache
@@ -109,8 +135,11 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `typecheck → lint → test → build` and aborts the push on the first failure.
   `git push --no-verify` is the deliberate escape hatch — don't make it a habit.
 - **Tests are logic-only, no DB, no browser**: `tests/` covers `cuota.ts`,
-  `urls.ts`, `venta-params.ts` (queries mocked), `csv.ts`, `slug.ts` — the pure
-  functions where a silent regression misquotes money or breaks canonical URLs.
+  `urls.ts`, `venta-params.ts` (queries mocked), `csv.ts`, `slug.ts`,
+  `uploads.ts`, `listing-policy.ts`, `venta-namespace.ts` and the import
+  planner (`import-identity` / `import-merge` / `import-plan`) — the pure
+  functions where a silent regression misquotes money, breaks canonical URLs
+  or duplicates a dealer's inventory.
   Keep the suite sub-second so the hook stays tolerable. No Playwright.
 - `<img>` on R2 photos is deliberate (pass-through loader, prepaid-data budget) —
   keep the per-site `eslint-disable-next-line @next/next/no-img-element` comments.
