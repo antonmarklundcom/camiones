@@ -16,10 +16,15 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 
 ## Commands
 
-- `npm run dev` / `build` / `typecheck`
+- `npm run dev` / `build` / `typecheck` / `lint` / `test`
+- `npm run gate` — the full quality gate (typecheck → lint → test → build). The
+  husky `pre-push` hook runs exactly this; `pre-commit` blocks any
+  `.github/workflows/` file. There is NO CI (see the zero-Actions rule below).
 - `npm run db:generate` / `db:migrate` (drizzle-kit; migrations in `drizzle/`)
 - `npm run seed:all` (brands, locations, financing, sample listings, guides — idempotent)
-- `npm run seed:admin` (ADMIN_EMAIL/ADMIN_PASSWORD env; re-running WITHOUT env rotates the admin password — known foot-gun, F21)
+- `npm run seed:admin` (ADMIN_EMAIL/ADMIN_PASSWORD env). Creating a NEW admin is
+  the default; touching an EXISTING user needs `-- --rotate` AND an explicit
+  ADMIN_PASSWORD, and it announces any role promotion (F21 fixed).
 - `npm run import:csv` (CSV contract: `data/ejemplo-inventario.csv`)
 - `npm run cron:cuotas`, `npm run content:guides` (Anthropic batch → drafts only)
 - tsx does NOT auto-load `.env` — set `DATABASE_URL` in the shell for scripts.
@@ -57,9 +62,27 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   (mileage update ⇒ duplicate listing), re-run without `--publish` demotes
   published rows, no transactions/journal/dry-run. Batch 2 rebuilds this.
   Until then: never re-run an import against real data without reading the audit.
-- **Sessions bake in role/sellerId for 30 days** without DB revalidation (F8).
+- **Sessions no longer bake in privileges** (F8 fixed): the cookie is only a
+  claim of identity — `getCurrentUser()` re-reads the user row on every guarded
+  request and takes role/sellerId from the DB. One indexed PK read; do NOT cache
+  it, that reintroduces the staleness window.
+- **Admin read scopes fail closed** (F20): anything that isn't a confirmed admin,
+  or is a dealer with NULL `sellerId`, gets a `1 = 0` filter. `users.email` and
+  `users.password_hash` are NOT NULL as of `drizzle/0002_*`.
+- **`/venta` segments share ONE namespace** — category, brand, city and condition
+  slugs collide with each other (F24). Every write path for brands/cities must
+  call `assertSegmentAvailable()` (`src/lib/venta-namespace.ts`); the seeds do.
+- **Listing status is a state machine** (F27, `src/lib/admin/listing-policy.ts`):
+  sold/removed can't jump straight back to `published` — they route through
+  `draft`, which clears `published_at` so re-publishing stamps an honest date.
+  `featured` is admin-only (it becomes a paid upsell); dealers never see the
+  control and a tampered form field is ignored server-side.
+- **Upload caps live in `src/lib/uploads.ts`** (F10) — 12 MB listing photos,
+  8 MB guide heroes, 4 MB seller logos, MIME allowlist. `next.config.ts` raises
+  `serverActions.bodySizeLimit` to 15 MB deliberately; keep the two in sync.
 - **Public pages are `force-dynamic` with zero caching** (F13) — deliberate at
-  build time (Hostinger can't reach DB during build), fixed at runtime in Batch 1.
+  build time (Hostinger can't reach DB during build); the runtime-caching fix is
+  still OPEN (see PLAN.md Batch 1 remainder).
 - Demo Dealer sample data is honest: no phone, "aviso de demostración" text.
 - Slugs/public_ids are stable — NEVER recompute on edit (inbound links + SEO).
 
@@ -73,6 +96,10 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - Titles: root layout `title.template` adds "| camiones.com.py"; pages return
   bare titles; home uses `title.absolute`. Meta ≤60/≤155.
 - Sitemap lists only self-canonicalising URLs (shared rule in `indexability.ts`).
+- Paginated pages (venta + seller) self-canonicalise with `?page=N` and are
+  `noindex,follow`; only query-param FILTER variants canonicalise back to the
+  clean segment URL (F15/F16). Seller pagination strips filter params via
+  `pageOnly()`.
 - **ZERO GitHub Actions minutes.** Never create `.github/workflows/` — not for CI,
   not for lint/tests, not for deploy (Hostinger builds from a free webhook).
   Quality gate is the local husky pre-push hook. A workflow needs Anton's
