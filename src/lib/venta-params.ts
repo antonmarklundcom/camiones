@@ -145,6 +145,17 @@ export function toFilters(
   };
 }
 
+/**
+ * F15 — drop every FILTER param, keep the page.
+ *
+ * Seller pages don't apply venta filters at all, but they were re-serialising
+ * whatever `?transmission=…&price_max=…` happened to be in the URL into their
+ * own pagination hrefs, minting crawlable duplicates of the same seller page.
+ */
+export function pageOnly(q: VentaQuery): VentaQuery {
+  return { page: q.page, hasFilters: false };
+}
+
 /** Re-serialize the ACTIVE query filters (used by pagination links). */
 export function queryString(
   q: VentaQuery,

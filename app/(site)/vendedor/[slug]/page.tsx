@@ -1,3 +1,6 @@
+/* eslint-disable @next/next/no-img-element -- R2 is a plain public bucket
+   with no transform API: images are re-encoded to sized WebP at ingest, so
+   next/image would only add an optimizer hop. Deliberate, see CLAUDE.md. */
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { countListings, getListingCards, getSellerBySlug, PER_PAGE } from "@/lib/queries";
@@ -9,8 +12,9 @@ import { JsonLd } from "@/components/JsonLd";
 import { itemListJsonLd } from "@/lib/jsonld";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import { formatInt } from "@/lib/format";
-import { parseVentaQuery } from "@/lib/venta-params";
+import { pageOnly, parseVentaQuery } from "@/lib/venta-params";
 import { imageUrl } from "@/lib/r2";
+import { paginatedCanonical, robotsFor } from "@/lib/indexability";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +23,20 @@ interface Props {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: Props): Promise<Metadata> {
   const { slug } = await params;
   const seller = await getSellerBySlug(slug);
   if (!seller) return { title: "Vendedor no encontrado" };
   const title = seller.name.length > 42 ? `${seller.name.slice(0, 41).trimEnd()}…` : seller.name;
-  const path = sellerPath(seller.slug);
+
+  // F15: this ignored searchParams entirely, so /vendedor/x?page=3 was
+  // INDEXABLE with a canonical claiming it was page 1. Page ≥2 now
+  // self-canonicalises and is noindex,follow like every other paginated view.
+  const { page } = parseVentaQuery(await searchParams);
+  const path = paginatedCanonical(sellerPath(seller.slug), page);
   const description = (
     `Camiones y vehículos de trabajo de ${seller.name}` +
     `${seller.cityName ? ` en ${seller.cityName}` : ""}. Mirá su stock y consultá por WhatsApp.`
@@ -36,6 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title,
     description,
     alternates: { canonical: path },
+    robots: robotsFor(page > 1 ? { state: "noindex" } : { state: "index" }),
     openGraph: {
       title: `${title} | camiones.com.py`,
       description,
@@ -136,9 +149,11 @@ export default async function SellerPage({ params, searchParams }: Props) {
         </div>
       )}
 
+      {/* F15: pageOnly() strips venta filter params — the seller page never
+          applies them, and echoing them into hrefs minted crawlable duplicates. */}
       <Pagination
         basePath={sellerPath(seller.slug)}
-        query={q}
+        query={pageOnly(q)}
         page={q.page}
         totalPages={totalPages}
       />
