@@ -269,6 +269,20 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
       > **Note:** the cron's lead-retry sweep (`sweepLeads()`) is a deliberate
       > no-op — the `leads` table is F1/Batch 1 and hasn't landed, so there is
       > nothing to retry yet. The seam is in place; wiring F1 is a body swap.
+> **Post-batch live-DB pass (2026-08-20):** Batches 2, 3 and 5 were re-run
+> end-to-end against a real MariaDB 10.11 (migrations 0000→0005, seeds, cron
+> CLI + `/api/cron`, importer, analytics, rendered pages). Everything held
+> except two bugs that unit tests structurally could not catch, fixed
+> separately: the `/venta` grid never called `paginatedCanonical()`, so every
+> page ≥2 canonicalised to page 1 while sending noindex (F16's exact
+> contradictory pair — the helper was right, the wiring was missing, and the
+> seller page had it correct); and `CuotaCalculator` opened at
+> `Math.ceil(minDownPct)` while `defaultCuota()` cached at the exact minimum,
+> so a program with a fractional minimum (12,5%) showed ₲ 9.472.484 in the
+> calculator next to ₲ 9.526.923 on the card for the same truck (F5's exact
+> failure mode). Both now have regression tests that reproduce the surfaces
+> rather than the helpers.
+
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
 - [x] **Batch 5 — UX wins + first-party analytics** ✅ 2026-08-20: sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.
       > **As built:** sort via `?orden=` (`src/lib/sort.ts`, `SortBar` = plain

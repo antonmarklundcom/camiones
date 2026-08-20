@@ -4,7 +4,12 @@ import { notFound } from "next/navigation";
 import { countListings, getListingCards, PER_PAGE } from "@/lib/queries";
 import { parseVentaQuery, resolveSegments, toFilters } from "@/lib/venta-params";
 import { ventaH1, ventaPath } from "@/lib/urls";
-import { robotsFor, segmentIndexability } from "@/lib/indexability";
+import {
+  paginatedCanonical,
+  paginationIndexability,
+  robotsFor,
+  segmentIndexability,
+} from "@/lib/indexability";
 import { ListingCard } from "@/components/ListingCard";
 import { FilterBar } from "@/components/FilterBar";
 import { Pagination } from "@/components/Pagination";
@@ -28,13 +33,20 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
   const q = parseVentaQuery(sp);
   const h1 = ventaH1(resolved.selection);
-  const canonical = ventaPath(resolved.selection);
+  // F16 — page ≥2 canonicalises to ITSELF. Canonical→page 1 while ALSO sending
+  // noindex is the contradictory pair the finding is about, and the seller page
+  // already does this correctly; the venta grid was still pointing every page
+  // at page 1. Filter params are a separate case and still drop out of the
+  // canonical: those really are duplicate slices of one page.
+  const canonical = paginatedCanonical(ventaPath(resolved.selection), q.page);
 
   // Faceted-URL discipline: segment pages may index (thin-page rule applies
   // in the page body via count); ANY query-param filter → noindex,follow and
   // canonical points at the clean segment URL.
   const count = await countListings(toFilters(resolved.selection, q));
-  const ix = q.hasFilters || q.page > 1 ? { state: "noindex" as const } : segmentIndexability(count);
+  const ix = q.hasFilters
+    ? { state: "noindex" as const }
+    : paginationIndexability(q.page, segmentIndexability(count));
 
   // ≤60 chars incl. suffix — trim the H1, not the brand.
   const title = h1.length > 42 ? `${h1.slice(0, 41).trimEnd()}…` : h1;
