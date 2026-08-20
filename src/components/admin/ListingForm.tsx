@@ -16,10 +16,14 @@ import {
   TRANSMISSION_VALUES,
 } from "@/db/schema";
 import {
-  LISTING_STATUS_VALUES,
   LISTING_STATUS_LABELS,
 } from "@/lib/admin/constants";
 import type { Role } from "@/lib/auth/roles";
+import {
+  canSetFeatured,
+  selectableStatuses,
+} from "@/lib/admin/listing-policy";
+import type { ListingStatus } from "@/lib/admin/constants";
 
 type Option = { id: number; name: string };
 
@@ -71,6 +75,9 @@ export function ListingForm({
 }: Props) {
   const [state, formAction] = useActionState<ListingFormState, FormData>(action, {});
   const err = state.fieldErrors ?? {};
+
+  const currentStatus = (values.status ?? "draft") as ListingStatus;
+  const statusOptions = selectableStatuses(currentStatus);
 
   const FieldError = ({ name }: { name: string }) =>
     err[name] ? <p className="mt-1 text-xs text-red-600">{err[name]}</p> : null;
@@ -226,16 +233,22 @@ export function ListingForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="status" className={labelCls}>Estado</label>
-              <select id="status" name="status" defaultValue={values.status ?? "draft"} className={inputCls}>
-                {LISTING_STATUS_VALUES.map((s) => (
+              {/* F27: only legal next states are offered. The server re-checks
+                  the transition, so a tampered <option> still gets rejected. */}
+              <select id="status" name="status" defaultValue={currentStatus} className={inputCls}>
+                {statusOptions.map((s) => (
                   <option key={s} value={s}>{LISTING_STATUS_LABELS[s]}</option>
                 ))}
               </select>
             </div>
-            <label className="flex items-center gap-3 self-end pb-2">
-              <input type="checkbox" name="featured" defaultChecked={values.featured ?? false} className="h-5 w-5 rounded border-charcoal-100 accent-amber-brand" />
-              <span className="text-sm font-medium text-ink">Destacado (aparece en la home)</span>
-            </label>
+            {/* F27: featured is admin-only home-page placement (a paid upsell
+                later), so dealers never see the control. */}
+            {canSetFeatured(role) && (
+              <label className="flex items-center gap-3 self-end pb-2">
+                <input type="checkbox" name="featured" defaultChecked={values.featured ?? false} className="h-5 w-5 rounded border-charcoal-100 accent-amber-brand" />
+                <span className="text-sm font-medium text-ink">Destacado (aparece en la home)</span>
+              </label>
+            )}
           </div>
         </div>
       </section>
