@@ -1,5 +1,4 @@
 import { formatUsd } from "@/lib/format";
-import { waLink } from "@/lib/whatsapp";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 
 /**

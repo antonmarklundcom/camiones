@@ -26,6 +26,7 @@ export function Gallery({ images, title }: { images: GalleryImage[]; title: stri
   return (
     <div>
       <div className="overflow-hidden rounded-xl bg-charcoal-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={main.url}
           alt={main.alt || title}
@@ -49,6 +50,7 @@ export function Gallery({ images, title }: { images: GalleryImage[]; title: stri
                 i === idx ? "border-amber-brand" : "border-transparent"
               }`}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={img.url}
                 alt=""

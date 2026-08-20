@@ -1,0 +1,19 @@
+# LOCAL quality gate — this is the ONLY gate; there is no CI (zero GitHub
+# Actions minutes). Warm node_modules + .next/cache make it faster than a
+# runner anyway. Skip deliberately with `git push --no-verify` only when you
+# know why.
+set -e
+
+echo "▸ typecheck"
+npm run typecheck
+
+echo "▸ lint"
+npm run lint
+
+echo "▸ test"
+npm run test
+
+echo "▸ build (Hostinger auto-deploys main — a broken build breaks prod)"
+npm run build
+
+echo "✓ gate verde — pushing"
