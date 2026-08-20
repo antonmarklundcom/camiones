@@ -1,65 +1,32 @@
 /**
- * Cuota recompute cron — caches listings.cuota_gs so cards render
- * "₲ 6,4 M/mes" at zero query cost. Reads the active financing programs
- * (PLACEHOLDER rates until Phase 4) and recomputes every published listing.
+ * Money recompute, from the shell.
  *
- *   npx tsx scripts/recompute-cuotas.ts
+ *   npm run cron:cuotas
  *
- * Wire as a Hostinger daily cron after Phase 3 go-live.
+ * Thin CLI over recomputeMoney() in src/lib/jobs/money.ts — the SAME function
+ * the guarded /api/cron route runs, so a manual run and a scheduled run can
+ * never diverge. Scheduling lives in docs/cron.md (external pinger, not a
+ * Hostinger per-slot cron).
+ *
+ * tsx does NOT auto-load .env — export DATABASE_URL in your shell first.
  */
-import { eq, isNotNull } from "drizzle-orm";
-import { db } from "../src/db";
-import { financingPrograms, listings } from "../src/db/schema";
-import { bestCuota, type FinancingProgram } from "../src/lib/cuota";
-
-const USD_TO_PYG = Number(process.env.USD_TO_PYG ?? 7300);
+import { recomputeMoney } from "../src/lib/jobs/money";
 
 async function main() {
-  const programRows = await db.select().from(financingPrograms);
-  const programs: FinancingProgram[] = programRows.map((p) => ({
-    code: p.code,
-    name: p.name,
-    annualRate: Number(p.annualRate),
-    maxTermMonths: p.maxTermMonths,
-    maxAmountGs: p.maxAmountGs != null ? Number(p.maxAmountGs) : null,
-    minDownPct: Number(p.minDownPct),
-    active: p.active,
-  }));
+  const r = await recomputeMoney();
 
-  // No active programs means no financing offer exists — every cached cuota is
-  // now fiction and MUST be cleared. Exiting early here would leave fabricated
-  // "₲ X/mes" figures on every card indefinitely.
-  if (!programs.some((p) => p.active)) {
-    const cleared = await db
-      .update(listings)
-      .set({ cuotaGs: null })
-      .where(isNotNull(listings.cuotaGs));
-    console.log(
-      `no active financing programs — cached cuotas cleared (${
-        (cleared as unknown as { rowsAffected?: number }).rowsAffected ?? "?"
-      } filas)`,
-    );
-    process.exit(0);
-  }
-
-  const rows = await db
-    .select({ id: listings.id, priceGs: listings.priceGs, priceUsd: listings.priceUsd })
-    .from(listings);
-
-  let updated = 0;
-  for (const row of rows) {
-    // price_gs is NOT NULL, but guard the derivation anyway (imports may
-    // backfill from USD only).
-    const priceGs = Number(row.priceGs) || Number(row.priceUsd) * USD_TO_PYG;
-    const result = bestCuota(priceGs, programs);
-    await db
-      .update(listings)
-      .set({ cuotaGs: result ? String(result.monthlyGs) : null })
-      .where(eq(listings.id, row.id));
-    updated++;
-  }
-
-  console.log(`recomputed cuota for ${updated} listings`);
+  console.log(
+    [
+      "",
+      `cotización:        ${r.rate} ₲/US$  (${r.rateSource})`,
+      `programas usables: ${r.usableProgramCount}`,
+      `avisos revisados:  ${r.listingsScanned}`,
+      `precio ₲ ajustado: ${r.priceGsUpdated}`,
+      `cuota recalculada: ${r.cuotaUpdated}`,
+      `cuota borrada:     ${r.cuotaCleared}`,
+    ].join("\n"),
+  );
+  for (const n of r.notes) console.log(`\n⚠ ${n}`);
   process.exit(0);
 }
 

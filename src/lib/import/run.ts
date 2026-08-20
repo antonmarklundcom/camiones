@@ -19,7 +19,7 @@ import {
   sellers,
   type ImportMode,
 } from "@/db/schema";
-import type { FinancingProgram } from "@/lib/cuota";
+import { type FinancingProgram, type RateConvention } from "@/lib/cuota";
 import type { ImportLookups } from "@/lib/import/contract";
 import type { ExistingListing } from "@/lib/import/merge";
 import type { ImportPlan, PlannedRow } from "@/lib/import/plan";
@@ -93,6 +93,7 @@ export async function loadPrograms(): Promise<FinancingProgram[]> {
     maxAmountGs: p.maxAmountGs != null ? Number(p.maxAmountGs) : null,
     minDownPct: Number(p.minDownPct),
     active: p.active,
+    rateConvention: p.rateConvention as RateConvention,
   }));
 }
 

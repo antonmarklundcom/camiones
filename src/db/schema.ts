@@ -259,10 +259,20 @@ export const users = mysqlTable("users", {
 /* Money math: financing programs (cuota engine)                       */
 /* ------------------------------------------------------------------ */
 
+export const RATE_CONVENTION_VALUES = ["tea", "nominal"] as const;
+
 export const financingPrograms = mysqlTable("financing_programs", {
   code: varchar("code", { length: 40 }).primaryKey(),
   name: varchar("name", { length: 140 }).notNull(),
   annualRate: decimal("annual_rate", { precision: 5, scale: 2 }).notNull(),
+  /**
+   * F26 — a rate is meaningless without its convention. Paraguayan quotes are
+   * usually TEA (tasa efectiva anual), so that is the default; "nominal" means
+   * a tasa nominal anual capitalizable mensualmente. src/lib/cuota.ts converts.
+   */
+  rateConvention: mysqlEnum("rate_convention", RATE_CONVENTION_VALUES)
+    .notNull()
+    .default("tea"),
   maxTermMonths: smallint("max_term_months").notNull(),
   maxAmountGs: decimal("max_amount_gs", { precision: 14, scale: 0 }),
   minDownPct: decimal("min_down_pct", { precision: 5, scale: 2 }).notNull(),
@@ -390,4 +400,38 @@ export const importRows = mysqlTable(
     createdAt: createdAt(),
   },
   (t) => [index("idx_row_job").on(t.jobId, t.rowNo)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Money: FX rates (F11)                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * USD → PYG, one active row plus full history.
+ *
+ * The rate used to be the build-time env constant `USD_TO_PYG=7300`. The
+ * guaraní moved ~13% over 2022-24, so ₲ prices drifted visibly and silently
+ * and only a redeploy could fix them. Now: USD stays the primary price, ₲ is a
+ * DERIVED cache (like cuota_gs) recomputed whenever the rate changes.
+ *
+ * Rows are never edited — setting a new rate deactivates the old one and
+ * inserts a new one, so "what was the rate when we quoted that truck?" stays
+ * answerable.
+ */
+export const fxRates = mysqlTable(
+  "fx_rates",
+  {
+    id: id(),
+    base: char("base", { length: 3 }).notNull().default("USD"),
+    quote: char("quote", { length: 3 }).notNull().default("PYG"),
+    rate: decimal("rate", { precision: 14, scale: 4 }).notNull(),
+    // Free text: "BCP tipo de cambio de referencia", "promedio casas de cambio",
+    // "manual". Not an enum — the source will change before the schema should.
+    source: varchar("source", { length: 140 }).notNull().default("manual"),
+    note: varchar("note", { length: 255 }),
+    active: boolean("active").notNull().default(false),
+    createdAt: createdAt(),
+    createdBy: fk("created_by"), // users.id; NULL when set by a script/cron
+  },
+  (t) => [index("idx_fx_active").on(t.base, t.quote, t.active, t.createdAt)],
 );

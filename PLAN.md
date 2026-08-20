@@ -248,7 +248,27 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
       > total). F28: `generatePublicId(exists, "I")` replaces the sha1 prefix slice.
       > **Not verified against a live DB** — no MySQL in a web session; see the
       > real-DB checklist under Phase 3.
-- [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
+- [x] **Batch 3 — money** ✅ 2026-08-20 (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
+      > **As built:** `fx_rates` (append-only, one active row + history, edited at
+      > `/admin/cotizacion` — saving recalculates every ₲ price and cuota on the
+      > spot); `USD_TO_PYG` demoted to a bootstrap fallback for an empty table.
+      > `src/lib/jobs/money.ts::recomputeMoney()` is the single scheduled-money
+      > function, called by BOTH `npm run cron:cuotas` and the guarded
+      > `GET|POST /api/cron?job=all|cuotas|leads` route (Bearer `CRON_SECRET`,
+      > 401 without it, **503 when unset** — fail closed; constant-time compare).
+      > `docs/cron.md` has the external-pinger setup. Zero-programs path NULLs
+      > cached cuotas instead of exiting early. F5: `defaultProgram()` +
+      > `defaultTerm()` (48 m, capped) shared by the cron cache and the
+      > calculator's initial state, `getActivePrograms()` ordered deterministically,
+      > "estimada*" on the card. F26: `financing_programs.rate_convention`
+      > (`tea` default) converted in `cuota.ts`. `usablePrograms()` drops any
+      > "(PLACEHOLDER)" program everywhere, so no fake rate can render money even
+      > with the flag on; `FEATURE_FINANCING` (`src/lib/flags.ts`) is default OFF.
+      > `drizzle/0004_late_*`. 22 new vitest cases (179 total). First-load JS
+      > unchanged at 111 kB. **Not verified against a live DB.**
+      > **Note:** the cron's lead-retry sweep (`sweepLeads()`) is a deliberate
+      > no-op — the `leads` table is F1/Batch 1 and hasn't landed, so there is
+      > nothing to retry yet. The seam is in place; wiring F1 is a body swap.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
 - [ ] **Batch 5 — UX wins + first-party analytics** (parallel-safe small PRs): sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6), capacity/vocation facets (I9, optional); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.
 - [ ] **Batch 6 — self-serve signup + moderation** (after 4): public "Vendé tu camión" registration (dealers AND particulares), email/WhatsApp-verified accounts; **every listing** from self-serve sellers goes through the admin moderation queue before publish — no auto-publish trust level (wp-to-native-admin pattern).
@@ -256,6 +276,18 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 - [ ] **Batch 8 — design pass** (Sonnet 5, before launch): restyle public site to the web-design-system floor — truck-vertical palette, type pairing, card/hero polish, subtle motion, premium trust feel. Must keep the prepaid-data budget (first-load JS ~111 kB) and WhatsApp-green rule intact.
 - [ ] **Template cut**: new `marketplace-template` repo (GitHub template) from the cleaned tree; strip demo data/truck copy/PY-specific seeds; template README + "new site in one prompt" checklist + which-verticals-fit note; update generic skills with lessons.
 - [ ] **Update this file + commit** at each batch end.
+
+**Real-DB pass still owed for Batch 3** (same reason — no MySQL in a web session):
+- [ ] `npm run db:migrate` for `drizzle/0004_*` (`fx_rates` + `rate_convention`).
+- [ ] Load the real rate at `/admin/cotizacion`; confirm every listing's ₲ price moves
+      and the history row appears with `vigente`.
+- [ ] `npm run cron:cuotas`: with all programs still "(PLACEHOLDER)", expect
+      `programas usables: 0` and every `cuota_gs` set to NULL.
+- [ ] Set `CRON_SECRET`, then: no header → 401, wrong token → 401, unset secret → 503,
+      correct token → 200 with a JSON body. Point the pinger at it and confirm the
+      first scheduled run in its log.
+- [ ] With the flag on and a *verified* (non-placeholder) program, confirm the card
+      cuota and the calculator's opening figure are the SAME number.
 
 **Real-DB pass still owed for Batch 2** (nothing below was run against MySQL — a web
 session has no database):

@@ -14,7 +14,7 @@
  */
 import { canTransition, nextPublishedAt } from "@/lib/admin/listing-policy";
 import type { ListingStatus } from "@/lib/admin/constants";
-import { bestCuota, type FinancingProgram } from "@/lib/cuota";
+import { defaultCuota, usablePrograms, type FinancingProgram } from "@/lib/cuota";
 import { deriveIdentity } from "@/lib/import/identity";
 import { parseRow, type ImportLookups, type ParsedRow } from "@/lib/import/contract";
 import {
@@ -168,7 +168,9 @@ function planOne(
   input: PlanInput,
 ): PlannedRow {
   const title = `${row.brand.name} ${row.model} ${row.year}`.slice(0, 180);
-  const cuota = bestCuota(row.priceGs, input.programs);
+  // F5/F26 — the same default the card cache and the calculator use, and
+  // never a placeholder rate (usablePrograms drops those).
+  const cuota = defaultCuota(row.priceGs, usablePrograms(input.programs));
   const cuotaGs = cuota ? String(cuota.monthlyGs) : null;
 
   const candidate: FieldValues = {
