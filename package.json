@@ -8,6 +8,11 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
@@ -21,7 +26,8 @@
     "import:csv": "tsx scripts/import-csv.ts",
     "cron:cuotas": "tsx scripts/recompute-cuotas.ts",
     "content:guides": "tsx scripts/generate-guides.ts",
-    "placeholders": "tsx scripts/generate-placeholders.ts"
+    "placeholders": "tsx scripts/generate-placeholders.ts",
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
@@ -39,6 +45,7 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.6",
     "@tailwindcss/postcss": "^4.1.10",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.15.32",
@@ -46,9 +53,13 @@
     "@types/react-dom": "^19.1.6",
     "@types/sanitize-html": "^2.16.1",
     "drizzle-kit": "^0.31.1",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.5.23",
+    "husky": "^9.1.7",
     "tailwindcss": "^4.1.10",
     "tsx": "^4.23.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.7"
   },
   "overrides": {
     "esbuild": "^0.28.1",

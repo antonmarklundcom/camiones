@@ -74,6 +74,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
       <div className="rounded-xl border border-black/5 bg-white p-6 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-6">
         <div className="flex items-center gap-4">
           {logo && (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={logo}
               alt={`Logo de ${seller.name}`}
