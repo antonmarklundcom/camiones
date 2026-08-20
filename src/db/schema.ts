@@ -93,7 +93,21 @@ export const listings = mysqlTable(
     sellerId: fk("seller_id").notNull(),
 
     featured: boolean("featured").notNull().default(false), // home "destacados"
-    // Stable key for idempotent CSV re-imports: sha1(seller|brand|model|year|km).
+    /**
+     * F2 — identity anchor for CSV re-imports. The dealer's own plate (chapa)
+     * or stock/row ID, normalised. When present the import identity is
+     * sha1(v2|seller|ext:<externalId>), so a mileage or price change updates
+     * the SAME listing instead of minting a second one. NULL for
+     * admin-created rows and for anchorless imports (which are refused
+     * `--publish`). See src/lib/import/identity.ts.
+     */
+    externalId: varchar("external_id", { length: 120 }),
+    /**
+     * Stable key for idempotent CSV re-imports. Derived by
+     * src/lib/import/identity.ts — anchored on external_id when available,
+     * otherwise a bucket key WITHOUT km (a mileage update must never mint a
+     * second listing).
+     */
     importKey: char("import_key", { length: 40 }).unique(),
 
     status: mysqlEnum("status", [
@@ -141,6 +155,8 @@ export const listings = mysqlTable(
     index("idx_km").on(t.status, t.km),
     index("idx_transmission").on(t.status, t.transmission),
     index("idx_traction").on(t.status, t.traction),
+    // Import anchor lookups (seller + dealer's own ID) during planImport().
+    index("idx_external").on(t.sellerId, t.externalId),
   ],
 );
 
@@ -299,4 +315,79 @@ export const contentPages = mysqlTable(
     updatedBy: fk("updated_by"),
   },
   (t) => [index("idx_content_list").on(t.status, t.kind, t.publishedAt)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Import journal: import_jobs + import_rows (F12)                     */
+/* ------------------------------------------------------------------ */
+
+export const IMPORT_MODE_VALUES = ["dry_run", "commit"] as const;
+export type ImportMode = (typeof IMPORT_MODE_VALUES)[number];
+
+export const IMPORT_ACTION_VALUES = [
+  "create",
+  "update",
+  "skip",
+  "error",
+] as const;
+export type ImportAction = (typeof IMPORT_ACTION_VALUES)[number];
+
+/**
+ * One row per `npm run import:csv` invocation — dry runs included, because the
+ * whole point of the journal is being able to answer "what did that run do (or
+ * would it have done) to my inventory?" months later. `blocked` marks a run
+ * that was refused before touching anything (missing seller, `--publish`
+ * without an identity anchor).
+ */
+export const importJobs = mysqlTable(
+  "import_jobs",
+  {
+    id: id(),
+    sourceFile: varchar("source_file", { length: 300 }).notNull(),
+    sellerSlug: varchar("seller_slug", { length: 180 }).notNull(),
+    sellerId: fk("seller_id"),
+    mode: mysqlEnum("mode", IMPORT_MODE_VALUES).notNull().default("dry_run"),
+    // Exact CLI flags, so a run is reproducible from the journal alone.
+    flags: varchar("flags", { length: 300 }).notNull().default(""),
+    // Whether every row carried an identity anchor (F2). Anchorless runs may
+    // never publish.
+    anchored: boolean("anchored").notNull().default(false),
+    status: mysqlEnum("status", ["running", "ok", "partial", "failed", "blocked"])
+      .notNull()
+      .default("running"),
+    rowsTotal: int("rows_total", { unsigned: true }).notNull().default(0),
+    rowsCreated: int("rows_created", { unsigned: true }).notNull().default(0),
+    rowsUpdated: int("rows_updated", { unsigned: true }).notNull().default(0),
+    rowsSkipped: int("rows_skipped", { unsigned: true }).notNull().default(0),
+    rowsError: int("rows_error", { unsigned: true }).notNull().default(0),
+    message: text("message"),
+    startedAt: datetime("started_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    finishedAt: datetime("finished_at"),
+  },
+  (t) => [index("idx_job_seller").on(t.sellerSlug, t.startedAt)],
+);
+
+/**
+ * One row per CSV data row per job. `previous_json` is the pre-change listing
+ * (NULL on create) — the rollback story F12 asked for: everything needed to
+ * put a clobbered row back is in this table.
+ */
+export const importRows = mysqlTable(
+  "import_rows",
+  {
+    id: id(),
+    jobId: fk("job_id").notNull(),
+    rowNo: int("row_no", { unsigned: true }).notNull(), // 1-based CSV line (header = 1)
+    action: mysqlEnum("action", IMPORT_ACTION_VALUES).notNull(),
+    importKey: char("import_key", { length: 40 }),
+    externalId: varchar("external_id", { length: 120 }),
+    listingId: fk("listing_id"),
+    // Fields the run actually changed, e.g. "price_usd, km".
+    changed: varchar("changed", { length: 500 }),
+    message: text("message"),
+    previousJson: text("previous_json"),
+    nextJson: text("next_json"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("idx_row_job").on(t.jobId, t.rowNo)],
 );

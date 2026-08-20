@@ -1,224 +1,165 @@
 /**
- * Dealer-inventory CSV importer (propia pattern).
+ * Dealer-inventory CSV importer (rebuilt in Phase 6 Batch 2 — audit F2/F3/F12/F28).
  *
- *   npx tsx scripts/import-csv.ts <file.csv> <seller-slug> [--publish]
- *   npm run import:csv -- data/dealer-x.csv dealer-x --publish
+ *   npm run import:csv -- <file.csv> <seller-slug> [--dry-run] [--publish] [--create-seller]
  *
- * Without --publish, rows land as drafts (review in Drizzle Studio until the
- * Build-2 admin exists). Idempotent: each row gets a deterministic import_key
- * = sha1(seller|marca|modelo|año|km); re-running the same file updates
- * instead of duplicating. The seller is upserted by slug.
+ * Always run it with --dry-run first. The dry run executes the SAME planning
+ * code as the real run (src/lib/import/plan.ts) and only skips the writes, so
+ * the table it prints is what you will get.
  *
- * Expected columns (header row, case-insensitive; * = required):
- *   marca* modelo* anio* km precio_usd* precio_gs condicion* categoria*
- *   transmision combustible traccion capacidad_kg ciudad* descripcion fotos
- * - categoria accepts DB values (camion, tractocamion…) or URL plurals
- *   (camiones, tractocamiones…).
- * - fotos = R2 keys separated by "|" (optional).
+ * Safety rails this script exists to enforce:
+ *  - the vendedor must already exist (--create-seller creates a DRAFT one);
+ *  - --publish is refused unless every row carries a chapa / stock_id anchor;
+ *  - an existing listing never has its status or first published_at rewritten
+ *    unless the CSV explicitly states an `estado`;
+ *  - every row runs in its own transaction and every run is journalled in
+ *    import_jobs / import_rows (previous_json = the pre-change row);
+ *  - a single failed row makes the process exit non-zero.
+ *
+ * Column contract: data/ejemplo-inventario.csv.
+ * tsx does NOT auto-load .env — export DATABASE_URL in the shell first.
  */
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { eq } from "drizzle-orm";
-import { db } from "../src/db";
-import {
-  brands,
-  images,
-  listings,
-  locations,
-  sellers,
-  financingPrograms,
-  CATEGORY_VALUES,
-  CONDITION_VALUES,
-  FUEL_VALUES,
-  TRACTION_VALUES,
-  TRANSMISSION_VALUES,
-  type Category,
-} from "../src/db/schema";
 import { parseCsv } from "../src/lib/csv";
 import { slugify } from "../src/lib/slug";
-import { bestCuota, type FinancingProgram } from "../src/lib/cuota";
-import { categoryBySlug } from "../src/lib/taxonomy";
+import { buildPlan } from "../src/lib/import/plan";
+import { formatSummary } from "../src/lib/import/report";
+import {
+  closeJob,
+  commitPlan,
+  createSellerDraft,
+  findSeller,
+  loadExisting,
+  loadLookups,
+  loadPrograms,
+  openJob,
+} from "../src/lib/import/run";
 
 const USD_TO_PYG = Number(process.env.USD_TO_PYG ?? 7300);
 
-function parseCategory(raw: string): Category | null {
-  const v = slugify(raw);
-  if ((CATEGORY_VALUES as readonly string[]).includes(v)) return v as Category;
-  return categoryBySlug(v)?.value ?? null;
-}
+const USAGE =
+  "uso: npm run import:csv -- <file.csv> <seller-slug> [--dry-run] [--publish] [--create-seller]";
 
-function oneOf<T extends string>(raw: string, values: readonly T[], fallback: T): T {
-  const v = slugify(raw) as T;
-  return values.includes(v) ? v : fallback;
-}
-
-async function main() {
+async function main(): Promise<number> {
   const args = process.argv.slice(2);
+  const dryRun = args.includes("--dry-run");
   const publish = args.includes("--publish");
+  const createSeller = args.includes("--create-seller");
   const positional = args.filter((a) => !a.startsWith("--"));
   const [file, sellerSlugArg] = positional;
+
   if (!file || !sellerSlugArg) {
-    console.error("usage: tsx scripts/import-csv.ts <file.csv> <seller-slug> [--publish]");
-    process.exit(1);
+    console.error(USAGE);
+    return 1;
   }
   const sellerSlug = slugify(sellerSlugArg);
+  const flags = args.filter((a) => a.startsWith("--")).join(" ");
 
-  // --- seller (upsert by slug) --------------------------------------------
-  const sellerName = sellerSlug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-  await db
-    .insert(sellers)
-    .values({
-      name: sellerName,
-      slug: sellerSlug,
-      type: "dealer",
-      status: "published",
-      publishedAt: new Date(),
-    })
-    .onDuplicateKeyUpdate({ set: { slug: sellerSlug } });
-  const [seller] = await db
-    .select({ id: sellers.id })
-    .from(sellers)
-    .where(eq(sellers.slug, sellerSlug))
-    .limit(1);
-
-  // --- lookups ---------------------------------------------------------------
-  const brandRows = await db
-    .select({ id: brands.id, slug: brands.slug, name: brands.name })
-    .from(brands);
-  const brandBySlug = new Map(brandRows.map((b) => [b.slug, b]));
-  const cityRows = await db
-    .select({ id: locations.id, slug: locations.slug })
-    .from(locations)
-    .where(eq(locations.level, "ciudad"));
-  const cityBySlug = new Map(cityRows.map((c) => [c.slug, c]));
-
-  const programRows = await db.select().from(financingPrograms);
-  const programs: FinancingProgram[] = programRows.map((p) => ({
-    code: p.code,
-    name: p.name,
-    annualRate: Number(p.annualRate),
-    maxTermMonths: p.maxTermMonths,
-    maxAmountGs: p.maxAmountGs != null ? Number(p.maxAmountGs) : null,
-    minDownPct: Number(p.minDownPct),
-    active: p.active,
-  }));
-
-  // --- rows --------------------------------------------------------------------
   const records = parseCsv(readFileSync(file, "utf8"));
-  let created = 0;
-  let updated = 0;
-  const errors: string[] = [];
+  if (!records.length) {
+    console.error(`✗ '${file}' no tiene filas de datos (¿falta la fila de encabezados?).`);
+    return 1;
+  }
 
-  for (const [i, rec] of records.entries()) {
-    const rowNo = i + 2; // header is row 1
-    try {
-      const brand = brandBySlug.get(slugify(rec.marca ?? ""));
-      if (!brand) throw new Error(`marca desconocida '${rec.marca}'`);
-      const city = cityBySlug.get(slugify(rec.ciudad ?? ""));
-      if (!city) throw new Error(`ciudad desconocida '${rec.ciudad}'`);
-      const category = parseCategory(rec.categoria ?? "");
-      if (!category) throw new Error(`categoria desconocida '${rec.categoria}'`);
-      const condition = oneOf(rec.condicion ?? "", CONDITION_VALUES, "usado");
+  const [lookups, programs] = await Promise.all([loadLookups(), loadPrograms()]);
+  const seller = await findSeller(sellerSlug);
 
-      const model = (rec.modelo ?? "").trim();
-      if (!model) throw new Error("modelo vacío");
-      const year = Number(rec.anio ?? rec["año"] ?? rec.ano);
-      if (!Number.isInteger(year) || year < 1970 || year > 2035) {
-        throw new Error(`año inválido '${rec.anio}'`);
-      }
-      const km = Math.max(0, Math.round(Number(rec.km ?? 0) || 0));
-      const priceUsd = Number(rec.precio_usd);
-      if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
-        throw new Error(`precio_usd inválido '${rec.precio_usd}'`);
-      }
-      const priceGs = Math.round(Number(rec.precio_gs) || priceUsd * USD_TO_PYG);
+  // --- plan (no writes) -----------------------------------------------------
+  // Planned once against a null seller so a missing vendedor becomes a blocker
+  // instead of an exception, then re-planned with the real id if we create one.
+  let plan = buildPlan({
+    records,
+    lookups,
+    existingByKey: new Map(),
+    sellerSlug,
+    sellerId: seller?.id ?? null,
+    sellerExists: seller !== null,
+    programs,
+    usdToPyg: USD_TO_PYG,
+    publish,
+    createSeller,
+    now: new Date(),
+  });
 
-      const importKey = createHash("sha1")
-        .update(`${sellerSlug}|${brand.slug}|${model.toLowerCase()}|${year}|${km}`)
-        .digest("hex");
-      const publicId = `I${importKey.slice(0, 9).toUpperCase()}`;
-      const title = `${brand.name} ${model} ${year}`;
-      const slug = `${slugify(title)}-${publicId.toLowerCase()}`;
-      const cuota = bestCuota(priceGs, programs);
+  if (plan.blockers.length) {
+    const job = await openJob({
+      sourceFile: file,
+      sellerSlug,
+      sellerId: seller?.id ?? null,
+      mode: dryRun ? "dry_run" : "commit",
+      flags,
+    });
+    await closeJob(job, plan, "blocked", plan.blockers.join(" | "));
+    console.error("\n✗ Import rechazado antes de tocar nada:\n");
+    for (const b of plan.blockers) console.error(`  • ${b}\n`);
+    return 1;
+  }
 
-      const [existing] = await db
-        .select({ id: listings.id })
-        .from(listings)
-        .where(eq(listings.importKey, importKey))
-        .limit(1);
-
-      const values = {
-        publicId,
-        slug,
-        title,
-        condition,
-        category,
-        brandId: brand.id,
-        model,
-        year,
-        km,
-        priceUsd: priceUsd.toFixed(2),
-        priceGs: String(priceGs),
-        cuotaGs: cuota ? String(cuota.monthlyGs) : null,
-        transmission: oneOf(rec.transmision ?? "", TRANSMISSION_VALUES, "manual"),
-        fuel: oneOf(rec.combustible ?? "", FUEL_VALUES, "diesel"),
-        traction: oneOf(rec.traccion ?? "", TRACTION_VALUES, "4x2"),
-        capacityKg: Number(rec.capacidad_kg) > 0 ? Math.round(Number(rec.capacidad_kg)) : undefined,
-        description: (rec.descripcion ?? "").trim() || null,
-        locationId: city.id,
-        sellerId: seller.id,
-        importKey,
-        status: publish ? ("published" as const) : ("draft" as const),
-        publishedAt: publish ? new Date() : null,
-      };
-
-      await db
-        .insert(listings)
-        .values(values)
-        .onDuplicateKeyUpdate({ set: { ...values } });
-      if (existing) updated++;
-      else created++;
-
-      // photos: replace deterministically when the column is present
-      const fotos = (rec.fotos ?? "")
-        .split("|")
-        .map((k) => k.trim())
-        .filter(Boolean);
-      if (fotos.length) {
-        const [row] = await db
-          .select({ id: listings.id })
-          .from(listings)
-          .where(eq(listings.importKey, importKey))
-          .limit(1);
-        await db.delete(images).where(eq(images.listingId, row.id));
-        for (const [s, key] of fotos.entries()) {
-          await db.insert(images).values({
-            listingId: row.id,
-            r2Key: key,
-            sortOrder: s,
-            alt: `${title} — foto ${s + 1}`,
-          });
-        }
-      }
-    } catch (e) {
-      errors.push(`fila ${rowNo}: ${e instanceof Error ? e.message : String(e)}`);
+  let sellerRef = seller;
+  if (!sellerRef) {
+    if (dryRun) {
+      console.log(
+        `\nℹ --create-seller: en un import real se crearía el vendedor ` +
+          `'${sellerSlug}' como BORRADOR (sin teléfono). Completalo en /admin/sellers.`,
+      );
+    } else {
+      sellerRef = await createSellerDraft(sellerSlug);
+      console.log(
+        `\n⚠ Vendedor '${sellerSlug}' creado como BORRADOR (sin teléfono ni ciudad). ` +
+          `Su página /vendedor/${sellerSlug} NO se publica hasta que lo completes en /admin.`,
+      );
     }
   }
 
-  console.log(
-    `\nimport '${file}' → seller '${sellerSlug}'${publish ? " (published)" : " (draft)"}\n` +
-      `  creados:      ${created}\n` +
-      `  actualizados: ${updated}\n` +
-      `  con error:    ${errors.length}`,
-  );
-  for (const e of errors) console.log(`  ✗ ${e}`);
-  process.exit(errors.length && !created && !updated ? 1 : 0);
+  // --- re-plan against the real DB state ------------------------------------
+  const provisionalKeys = plan.rows
+    .map((r) => r.importKey)
+    .filter((k): k is string => k !== null);
+  const existingByKey = await loadExisting(provisionalKeys);
+
+  plan = buildPlan({
+    records,
+    lookups,
+    existingByKey,
+    sellerSlug,
+    sellerId: sellerRef?.id ?? null,
+    sellerExists: true,
+    programs,
+    usdToPyg: USD_TO_PYG,
+    publish,
+    createSeller,
+    now: new Date(),
+  });
+
+  const job = await openJob({
+    sourceFile: file,
+    sellerSlug,
+    sellerId: sellerRef?.id ?? null,
+    mode: dryRun ? "dry_run" : "commit",
+    flags,
+  });
+
+  const result = await commitPlan(plan, job, { dryRun });
+  const status = result.errors.length
+    ? result.created || result.updated
+      ? "partial"
+      : "failed"
+    : "ok";
+  await closeJob(job, plan, status, null);
+
+  console.log(formatSummary(plan, result, { file, sellerSlug, dryRun, publish }));
+  console.log(`\n  job #${job.id} — revisá import_rows (previous_json) para revertir.`);
+  if (dryRun) {
+    console.log("\n  Simulacro: no se escribió ningún aviso. Quitá --dry-run para aplicar.");
+  }
+
+  // F12: any errored row fails the run, even if others succeeded.
+  return result.errors.length ? 1 : 0;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .then((code) => process.exit(code))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

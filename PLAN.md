@@ -233,7 +233,21 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 > open and are the next work. Consequence: there is no `leads` table yet, so the
 > "run db:migrate for the leads table" item is not actionable — `drizzle/0002_*`
 > (this session) only touches `users` nullability and `listings` indexes.
-- [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
+- [x] **Batch 2 — import rebuild** ✅ 2026-08-20 (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
+      > **As built:** `scripts/import-csv.ts` is now a thin CLI over `src/lib/import/`
+      > — `contract.ts` (CSV → validated row, es-PY errors), `identity.ts`
+      > (`sha1(v2|seller|ext:<chapa>)`, km/price deliberately excluded), `merge.ts`
+      > (field ownership), `plan.ts` (`buildPlan()` — pure, the entire decision
+      > layer), `run.ts` (`commitPlan()` — per-row transactions + journal),
+      > `report.ts` (summary table). `--dry-run` runs the same `buildPlan()` and
+      > only skips writes. New CSV columns: `chapa`/`stock_id` (identity anchor,
+      > gates `--publish`) and `estado` (availability; absent ⇒ status untouched).
+      > `drizzle/0003_late_longshot.sql` adds `import_jobs`, `import_rows` and
+      > `listings.external_id` + `idx_external`. `data/README-import.md` documents
+      > the contract in es-PY for dealer-facing use. 42 new vitest cases (156
+      > total). F28: `generatePublicId(exists, "I")` replaces the sha1 prefix slice.
+      > **Not verified against a live DB** — no MySQL in a web session; see the
+      > real-DB checklist under Phase 3.
 - [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
 - [ ] **Batch 5 — UX wins + first-party analytics** (parallel-safe small PRs): sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6), capacity/vocation facets (I9, optional); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.
@@ -242,6 +256,21 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 - [ ] **Batch 8 — design pass** (Sonnet 5, before launch): restyle public site to the web-design-system floor — truck-vertical palette, type pairing, card/hero polish, subtle motion, premium trust feel. Must keep the prepaid-data budget (first-load JS ~111 kB) and WhatsApp-green rule intact.
 - [ ] **Template cut**: new `marketplace-template` repo (GitHub template) from the cleaned tree; strip demo data/truck copy/PY-specific seeds; template README + "new site in one prompt" checklist + which-verticals-fit note; update generic skills with lessons.
 - [ ] **Update this file + commit** at each batch end.
+
+**Real-DB pass still owed for Batch 2** (nothing below was run against MySQL — a web
+session has no database):
+- [ ] `npm run db:migrate` for `drizzle/0003_*` (two new tables + one column + one index).
+- [ ] `npm run import:csv -- data/ejemplo-inventario.csv <seller> --dry-run` against a
+      seeded DB: confirm 3 planned creates and that **nothing** is written.
+- [ ] Same file without `--dry-run`, then re-run it: expect 3 `sin cambios`, exit 0.
+- [ ] Bump a `km` value and re-run: expect 1 `actualizado`, **not** a 4th listing.
+- [ ] Re-run without `--publish` against published rows: confirm they stay published.
+- [ ] Strip the `chapa` column and try `--publish`: confirm the run is refused before
+      any write and `import_jobs.status = 'blocked'`.
+- [ ] Typo the seller slug: confirm the blocker, and that `--create-seller` produces a
+      **draft** seller.
+- [ ] Force a mid-row failure and confirm the row rolled back whole (no listing with
+      zero photos) and the process exited non-zero.
 
 **Go-live gates (unchanged, business-side):** real inventory, real WhatsApp number + mailbox, financing rates verified (or flag stays off), Phase 3 deploy checklist.
 
