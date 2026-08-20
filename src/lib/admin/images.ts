@@ -4,11 +4,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { images, listings } from "@/db/schema";
 import { uploadToR2 } from "@/lib/r2";
+import { assertImageUpload, PHOTO_LIMITS } from "@/lib/uploads";
 import type { SessionUser } from "@/lib/auth/session";
 import { assertCanManageSeller } from "@/lib/auth/guard";
-
-const MAX_BYTES = 12 * 1024 * 1024; // 12 MB per original upload
-const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
 async function loadOwnedListing(user: SessionUser, listingId: number) {
   const [row] = await db
@@ -52,12 +50,7 @@ export async function addListingImages(
   let added = 0;
 
   for (const file of valid) {
-    if (file.size > MAX_BYTES) {
-      throw new Error(`"${file.name}" supera el límite de 12 MB.`);
-    }
-    if (file.type && !ACCEPTED.includes(file.type)) {
-      throw new Error(`"${file.name}" no es una imagen válida (JPG, PNG o WebP).`);
-    }
+    assertImageUpload(file, PHOTO_LIMITS);
     const original = Buffer.from(await file.arrayBuffer());
     const webp = await toWebp(original);
     const key = `listings/${listing.publicId}/${Date.now()}-${randomBytes(4).toString("hex")}.webp`;
