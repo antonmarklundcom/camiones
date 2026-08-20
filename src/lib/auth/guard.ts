@@ -2,6 +2,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { getSession, type SessionUser } from "@/lib/auth/session";
 import { revalidateSessionUser } from "@/lib/auth/revalidate";
+import { can, isCrossSeller, type Capability } from "@/lib/auth/roles";
 
 /**
  * Current user or undefined — for conditional UI (nav, "mine only" filters).
@@ -42,11 +43,24 @@ export async function requireUser(): Promise<SessionUser> {
   return user;
 }
 
-/** Admin-only gate (user management, cross-seller listing/seller admin). */
+/** Admin-only gate (user management, roles, money settings). */
 export async function requireAdmin(): Promise<SessionUser> {
   const user = await requireUser();
   if (user.role !== "admin") {
     throw new Error("Acceso denegado: se requiere rol de administrador.");
+  }
+  return user;
+}
+
+/**
+ * Capability gate — prefer this over `requireAdmin()` for anything `staff`
+ * should be able to do. Adding a role then means editing CAPABILITIES, not
+ * hunting for `=== "admin"` across the tree.
+ */
+export async function requireCapability(capability: Capability): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!can(user.role, capability)) {
+    throw new Error("Acceso denegado: tu rol no permite esta acción.");
   }
   return user;
 }
@@ -57,7 +71,7 @@ export async function requireAdmin(): Promise<SessionUser> {
  * tampered request, not a missing login.
  */
 export function assertCanManageSeller(user: SessionUser, sellerId: number): void {
-  if (user.role === "admin") return;
+  if (isCrossSeller(user.role)) return;
   if (user.sellerId !== sellerId) {
     throw new Error("Acceso denegado: este registro no pertenece a tu cuenta.");
   }
@@ -71,7 +85,7 @@ export function resolveOwningSeller(
   user: SessionUser,
   requestedSellerId: number | undefined,
 ): number {
-  if (user.role === "dealer") {
+  if (!isCrossSeller(user.role)) {
     if (!user.sellerId) {
       throw new Error("Tu usuario no tiene una concesionaria asignada.");
     }

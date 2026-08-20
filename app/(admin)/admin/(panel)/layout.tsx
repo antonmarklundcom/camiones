@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/guard";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { logout } from "./actions";
+import { siteConfig } from "@site.config";
 
 /**
  * Auth gate + shell for the whole panel. `requireUser()` redirects to
@@ -21,7 +22,8 @@ export default async function PanelLayout({
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-4">
             <Link href="/admin" className="font-heading text-lg font-extrabold">
-              camiones<span className="text-amber-brand">.py</span>{" "}
+              {siteConfig.wordmark.lead}
+              <span className="text-amber-brand">{siteConfig.wordmark.accent}</span>{" "}
               <span className="text-white/60">panel</span>
             </Link>
           </div>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth/guard";
+import { requireCapability } from "@/lib/auth/guard";
 import { listAdminContent } from "@/lib/content/queries";
 import { CONTENT_KIND_LABELS } from "@/lib/content/constants";
 import { PublishBadge } from "@/components/admin/StatusBadge";
@@ -14,7 +14,7 @@ export default async function AdminGuidesPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  await requireAdmin();
+  await requireCapability("manageContent");
   const rows = await listAdminContent();
   const sp = await searchParams;
 

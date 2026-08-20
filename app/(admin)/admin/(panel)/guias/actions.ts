@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/auth/guard";
+import { requireCapability } from "@/lib/auth/guard";
 import {
   createContent,
   updateContent,
@@ -29,7 +29,7 @@ export async function createContentAction(
   _prev: ContentFormState,
   formData: FormData,
 ): Promise<ContentFormState> {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("manageContent");
   const parsed = parseContentForm(formData);
   if (!parsed.success) {
     return {
@@ -52,7 +52,7 @@ export async function updateContentAction(
   _prev: ContentFormState,
   formData: FormData,
 ): Promise<ContentFormState> {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("manageContent");
   const parsed = parseContentForm(formData);
   if (!parsed.success) {
     return {
@@ -71,7 +71,7 @@ export async function updateContentAction(
 }
 
 export async function changeContentStatusAction(formData: FormData): Promise<void> {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("manageContent");
   const id = Number(formData.get("id"));
   const status = String(formData.get("status"));
   if (!id || (status !== "draft" && status !== "published")) return;
@@ -80,7 +80,7 @@ export async function changeContentStatusAction(formData: FormData): Promise<voi
 }
 
 export async function deleteContentAction(formData: FormData): Promise<void> {
-  await requireAdmin();
+  await requireCapability("manageContent");
   const id = Number(formData.get("id"));
   if (!id) return;
   await deleteContent(id);
@@ -100,7 +100,7 @@ export async function uploadHeroAction(
   _prev: HeroActionState,
   formData: FormData,
 ): Promise<HeroActionState> {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("manageContent");
   const file = formData.get("hero");
   if (!(file instanceof File) || file.size === 0) {
     return { error: "Elegí una imagen." };
@@ -115,7 +115,7 @@ export async function uploadHeroAction(
 }
 
 export async function removeHeroAction(id: number): Promise<void> {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("manageContent");
   await removeContentHero(admin, id);
   revalidatePath(`/admin/guias/${id}`);
 }

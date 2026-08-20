@@ -10,6 +10,7 @@ import {
   users,
 } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
+import { isCrossSeller } from "@/lib/auth/roles";
 
 /**
  * Admin/dealer reads. Unlike src/lib/queries.ts (public, published-only), these
@@ -26,7 +27,7 @@ import type { SessionUser } from "@/lib/auth/session";
 const MATCH_NOTHING = sql`1 = 0`;
 
 function listingScope(user: SessionUser): SQL[] {
-  if (user.role === "admin") return [];
+  if (isCrossSeller(user.role)) return [];
   if (user.role === "dealer" && user.sellerId) {
     return [eq(listings.sellerId, user.sellerId)];
   }
@@ -34,7 +35,7 @@ function listingScope(user: SessionUser): SQL[] {
 }
 
 function sellerScope(user: SessionUser): SQL[] {
-  if (user.role === "admin") return [];
+  if (isCrossSeller(user.role)) return [];
   if (user.role === "dealer" && user.sellerId) {
     return [eq(sellers.id, user.sellerId)];
   }

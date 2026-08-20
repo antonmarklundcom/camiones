@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Archivo } from "next/font/google";
 import { siteOrigin } from "@/lib/urls";
 import "./globals.css";
+import { siteConfig, titleTemplate } from "@site.config";
 
 const archivo = Archivo({
   subsets: ["latin"],
@@ -13,14 +14,14 @@ const archivo = Archivo({
 export const metadata: Metadata = {
   metadataBase: new URL(siteOrigin()),
   title: {
-    default: "Camiones nuevos y usados en Paraguay | camiones.com.py",
-    template: "%s | camiones.com.py",
+    default: `Camiones nuevos y usados en ${siteConfig.country} | ${siteConfig.name}`,
+    template: titleTemplate,
   },
   description:
     "Encontrá tu camión en Paraguay: camiones, tractocamiones y utilitarios nuevos y usados. Precios en US$ y ₲, financiación y atención por WhatsApp.",
   openGraph: {
-    siteName: "camiones.com.py",
-    locale: "es_PY",
+    siteName: siteConfig.name,
+    locale: siteConfig.locale.replace("-", "_"),
     type: "website",
     // Site-wide fallback: WhatsApp is the primary share channel here and
     // renders previews imageless without one. Pages with their own image

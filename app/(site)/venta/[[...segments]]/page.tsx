@@ -17,6 +17,7 @@ import { SortBar } from "@/components/SortBar";
 import { JsonLd } from "@/components/JsonLd";
 import { itemListJsonLd } from "@/lib/jsonld";
 import { formatInt } from "@/lib/format";
+import { siteConfig } from "@site.config";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     description,
     alternates: { canonical },
     robots: robotsFor(ix),
-    openGraph: { title: `${title} | camiones.com.py`, description, url: canonical },
+    openGraph: { title: `${title} | ${siteConfig.name}`, description, url: canonical },
   };
 }
 

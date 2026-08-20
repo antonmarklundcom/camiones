@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CATEGORIES } from "@/lib/taxonomy";
+import { siteConfig } from "@site.config";
 
 const CITIES = [
   { slug: "asuncion", name: "Asunción" },
@@ -16,7 +17,8 @@ export function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <p className="font-heading text-xl font-extrabold text-white">
-            camiones<span className="text-amber-brand">.com.py</span>
+            {siteConfig.wordmark.lead}
+            <span className="text-amber-brand">{siteConfig.wordmark.accent}</span>
           </p>
           <p className="mt-3 text-sm leading-relaxed">
             El portal de camiones y vehículos de trabajo de Paraguay. Encontrá
@@ -48,13 +50,26 @@ export function SiteFooter() {
           </ul>
         </div>
         <div>
-          {/* NAP block — placeholders until the legal entity/office is final */}
+          {/*
+            F30 — an unconfirmed mailbox on every page is a dead-end contact
+            path. Lines come from site.config.ts and a null value is OMITTED
+            rather than printed as "(a confirmar)": say less, but say nothing
+            untrue.
+          */}
           <p className="font-heading font-bold text-white">Contacto</p>
           <address className="mt-3 space-y-2 text-sm not-italic">
-            <p>camiones.com.py</p>
-            <p>Asunción, Paraguay</p>
-            <p>Dirección de oficina: a confirmar</p>
-            <p>contacto@camiones.com.py (a confirmar)</p>
+            <p>{siteConfig.name}</p>
+            <p>
+              {[siteConfig.contact.city, siteConfig.country].filter(Boolean).join(", ")}
+            </p>
+            {siteConfig.contact.address && <p>{siteConfig.contact.address}</p>}
+            {siteConfig.contact.email && (
+              <p>
+                <a href={`mailto:${siteConfig.contact.email}`} className="hover:text-amber-brand">
+                  {siteConfig.contact.email}
+                </a>
+              </p>
+            )}
           </address>
         </div>
       </div>

@@ -23,6 +23,7 @@ import { ContactForm } from "@/components/ContactForm";
 import { StickyCtaBar } from "@/components/StickyCtaBar";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import { enviarConsulta } from "./actions";
+import { siteConfig } from "@site.config";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     alternates: { canonical: path },
     openGraph: {
-      title: `${title} | camiones.com.py`,
+      title: `${title} | ${siteConfig.name}`,
       description,
       url: path,
       images: cover ? [{ url: cover.startsWith("/") ? absoluteUrl(cover) : cover }] : undefined,

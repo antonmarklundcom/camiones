@@ -4,7 +4,7 @@
  * server enforces. The server is still the authority: every mutation calls
  * assertStatusTransition() / resolveFeatured() regardless of what the form sent.
  */
-import type { Role } from "@/lib/auth/roles";
+import { can, type Role } from "@/lib/auth/roles";
 import { LISTING_STATUS_LABELS, type ListingStatus } from "@/lib/admin/constants";
 
 /**
@@ -73,10 +73,12 @@ export function resolveFeatured(
   requested: boolean,
   current: boolean,
 ): boolean {
-  return role === "admin" ? requested : current;
+  // Admin-only on purpose — `staff` moderate listings but do not hand out
+  // home-page placement, which becomes a paid upsell.
+  return can(role, "featureListing") ? requested : current;
 }
 
 /** UI helper: should the "Destacado" checkbox be rendered at all? */
 export function canSetFeatured(role: Role): boolean {
-  return role === "admin";
+  return can(role, "featureListing");
 }

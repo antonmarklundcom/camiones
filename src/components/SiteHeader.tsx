@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { waLink, WA_GENERIC_TEXT } from "@/lib/whatsapp";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
+import { siteConfig } from "@site.config";
 
 const NAV = [
   { href: "/venta/camiones", label: "Camiones" },
@@ -20,7 +21,8 @@ export function SiteHeader() {
     <header className="bg-charcoal-950 text-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
         <Link href="/" className="font-heading text-2xl font-extrabold tracking-tight">
-          camiones<span className="text-amber-brand">.com.py</span>
+          {siteConfig.wordmark.lead}
+          <span className="text-amber-brand">{siteConfig.wordmark.accent}</span>
         </Link>
         {waHref && (
           <a

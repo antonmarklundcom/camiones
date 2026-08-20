@@ -8,6 +8,7 @@ import { absoluteUrl, guidePath, ventaPath } from "@/lib/urls";
 import { categoryByValue } from "@/lib/taxonomy";
 import { articleJsonLd } from "@/lib/jsonld";
 import { JsonLd } from "@/components/JsonLd";
+import { siteConfig } from "@site.config";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     alternates: { canonical: path },
     openGraph: {
-      title: `${g.title} | camiones.com.py`,
+      title: `${g.title} | ${siteConfig.name}`,
       description,
       url: path,
       type: "article",

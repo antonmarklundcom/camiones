@@ -50,6 +50,20 @@
       "when": 1787257014573,
       "tag": "0006_faithful_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787258169654,
+      "tag": "0007_equal_devos",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787258251272,
+      "tag": "0008_black_squadron_sinister",
+      "breakpoints": true
     }
   ]
 }

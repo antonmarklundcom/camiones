@@ -14,6 +14,7 @@ import { formatInt } from "@/lib/format";
 import { pageOnly, parseVentaQuery } from "@/lib/venta-params";
 import { imageUrl } from "@/lib/r2";
 import { paginatedCanonical, robotsFor } from "@/lib/indexability";
+import { siteConfig } from "@site.config";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export async function generateMetadata({
     alternates: { canonical: path },
     robots: robotsFor(page > 1 ? { state: "noindex" } : { state: "index" }),
     openGraph: {
-      title: `${title} | camiones.com.py`,
+      title: `${title} | ${siteConfig.name}`,
       description,
       url: path,
       type: "profile",
@@ -84,7 +85,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const phoneText = seller.phoneDisplay ?? (telHref ? `+${waNumber(seller.phoneWhatsapp)}` : null);
   const waHref = waLink(
     seller.phoneWhatsapp,
-    `Hola, vi su página en camiones.com.py y quiero consultar por su stock`,
+    `Hola, vi su página en ${siteConfig.name} y quiero consultar por su stock`,
   );
   const logo = imageUrl(seller.logoR2Key);
 
@@ -116,7 +117,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
               <VerifiedBadge verifiedAt={seller.verifiedAt} />
             </div>
             <p className="mt-0.5 text-sm text-ink-soft">
-              {[seller.cityName, seller.address].filter(Boolean).join(" · ") || "Paraguay"}
+              {[seller.cityName, seller.address].filter(Boolean).join(" · ") || siteConfig.country}
               {" · "}
               {formatInt(total)} avisos
             </p>
