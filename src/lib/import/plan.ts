@@ -245,6 +245,15 @@ function planOne(
     changed.push("cuotaGs");
   }
 
+  // I5 — remember what the price WAS so the card can say "precio bajó". Only
+  // on a real US$ move: price_gs also shifts with the FX rate, and a guaraní
+  // move must never fake a price drop.
+  if (changed.includes("priceUsd")) {
+    values.priceUsdPrev = existing.priceUsd;
+    values.priceChangedAt = input.now;
+    changed.push("priceUsdPrev");
+  }
+
   // F3 — status/publishedAt are untouched unless the CSV explicitly states an
   // availability, and the FIRST published_at is never re-stamped.
   const current = existing.status as ListingStatus;

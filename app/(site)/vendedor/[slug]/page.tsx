@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { countListings, getListingCards, getSellerBySlug, PER_PAGE } from "@/lib/queries";
 import { sellerPath } from "@/lib/urls";
+import { recordRequestEvent } from "@/lib/analytics/request";
+import { VerifiedBadge } from "@/components/Badges";
 import { waLink, waNumber } from "@/lib/whatsapp";
 import { ListingCard } from "@/components/ListingCard";
 import { Pagination } from "@/components/Pagination";
@@ -61,6 +63,13 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const seller = await getSellerBySlug(slug);
   if (!seller) notFound();
 
+  // I8 — first-party page view (see the note on the listing page).
+  await recordRequestEvent({
+    kind: "page_view",
+    sellerId: seller.id,
+    path: sellerPath(seller.slug),
+  });
+
   const q = parseVentaQuery(sp);
   const [total, cards] = await Promise.all([
     countListings({ sellerId: seller.id }),
@@ -97,9 +106,12 @@ export default async function SellerPage({ params, searchParams }: Props) {
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
               {seller.type === "dealer" ? "Concesionaria" : "Vendedor particular"}
             </p>
-            <h1 className="font-heading text-2xl font-extrabold text-ink">
-              {seller.name}
-            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-heading text-2xl font-extrabold text-ink">
+                {seller.name}
+              </h1>
+              <VerifiedBadge verifiedAt={seller.verifiedAt} />
+            </div>
             <p className="mt-0.5 text-sm text-ink-soft">
               {[seller.cityName, seller.address].filter(Boolean).join(" · ") || "Paraguay"}
               {" · "}

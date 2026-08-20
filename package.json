@@ -2,7 +2,7 @@
   "name": "camiones",
   "version": "0.1.0",
   "private": true,
-  "description": "camiones.com.py — Paraguay truck listings portal.",
+  "description": "camiones.com.py \u2014 Paraguay truck listings portal.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -25,6 +25,7 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "import:csv": "tsx scripts/import-csv.ts",
     "cron:cuotas": "tsx scripts/recompute-cuotas.ts",
+    "analytics:rollup": "tsx scripts/aggregate-analytics.ts",
     "content:guides": "tsx scripts/generate-guides.ts",
     "placeholders": "tsx scripts/generate-placeholders.ts",
     "prepare": "husky || true"

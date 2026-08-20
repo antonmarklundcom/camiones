@@ -39,6 +39,15 @@ export function listingPath(slug: string): string {
   return `/camion/${slug}`;
 }
 
+/**
+ * I8 — the tracked WhatsApp hop. Every listing CTA points here instead of
+ * straight at wa.me, so the click is logged before the redirect. Uses the
+ * publicId (stable, short, already in the slug) rather than the numeric id.
+ */
+export function waTrackPath(publicId: string): string {
+  return `/wa/${publicId}`;
+}
+
 export function sellerPath(slug: string): string {
   return `/vendedor/${slug}`;
 }

@@ -270,12 +270,47 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
       > no-op — the `leads` table is F1/Batch 1 and hasn't landed, so there is
       > nothing to retry yet. The seam is in place; wiring F1 is a body swap.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
-- [ ] **Batch 5 — UX wins + first-party analytics** (parallel-safe small PRs): sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6), capacity/vocation facets (I9, optional); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.
+- [x] **Batch 5 — UX wins + first-party analytics** ✅ 2026-08-20: sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.
+      > **As built:** sort via `?orden=` (`src/lib/sort.ts`, `SortBar` = plain
+      > `rel="nofollow"` links, zero client JS); a non-default order counts as a
+      > filter so it stays noindex + canonical-back, and `featured DESC` leads the
+      > ORDER BY only on the default view. Badges in `src/components/Badges.tsx`
+      > over pure `src/lib/freshness.ts` (freshness ≤60 d, price drop ≥1% and
+      > ≤30 d, never on a rise). `listings.price_usd_prev`/`price_changed_at`
+      > written by the importer and admin edits on a real US$ move only — the FX
+      > recompute can't fake a drop. `sellers.verified_at`/`verified_by`/
+      > `verified_note` + an admin-only panel on `/admin/sellers/[id]`.
+      > Analytics: `analytics_events` (buffered writer, one multi-row INSERT per
+      > 25 events / 5 s, daily-rotating `visitor_hash`, referrer HOST only, bot
+      > filter) → `analytics_daily` via `rollupAnalytics()` (SQL, idempotent,
+      > 90-day raw retention) → `/admin/analytics` (dealer-scoped, fail-closed,
+      > ordered by WhatsApp clicks). `/api/cron?job=analytics` +
+      > `npm run analytics:rollup`. `docs/analytics.md` documents the privacy
+      > model and the buffer trade-off. `drizzle/0005_*`. 32 new vitest cases
+      > (211 total). **First-load JS unchanged at 111 kB** on every public route.
+      > **Deferred:** I9 (capacity/vocation facets) — it was marked optional and
+      > vocation tags need a taxonomy decision that belongs with Batch 4's
+      > categories table. **Not verified against a live DB.**
 - [ ] **Batch 6 — self-serve signup + moderation** (after 4): public "Vendé tu camión" registration (dealers AND particulares), email/WhatsApp-verified accounts; **every listing** from self-serve sellers goes through the admin moderation queue before publish — no auto-publish trust level (wp-to-native-admin pattern).
 - [ ] **Batch 7 — admin "add from link"**: admin-only paste-URL → AI-extracted prefilled draft (title/specs/photos) for review, never auto-publish. Caveats: scraping fragility (FB blocks), only with seller's permission — note in UI.
 - [ ] **Batch 8 — design pass** (Sonnet 5, before launch): restyle public site to the web-design-system floor — truck-vertical palette, type pairing, card/hero polish, subtle motion, premium trust feel. Must keep the prepaid-data budget (first-load JS ~111 kB) and WhatsApp-green rule intact.
 - [ ] **Template cut**: new `marketplace-template` repo (GitHub template) from the cleaned tree; strip demo data/truck copy/PY-specific seeds; template README + "new site in one prompt" checklist + which-verticals-fit note; update generic skills with lessons.
 - [ ] **Update this file + commit** at each batch end.
+
+**Real-DB pass still owed for Batch 5** (no MySQL in a web session):
+- [ ] `npm run db:migrate` for `drizzle/0005_*` (2 tables, 5 columns, 1 index).
+- [ ] Open a listing, then `npm run analytics:rollup` → a `page_view` row in
+      `analytics_daily` and the count visible at `/admin/analytics`.
+- [ ] Click the WhatsApp CTA: confirm the 302 goes to the right `wa.me` link AND a
+      `wa_click` lands. Then a seller with no phone → bounces back to the listing,
+      no broken `wa.me/?text=`.
+- [ ] Confirm a dealer login sees only their own rows at `/admin/analytics` (and a
+      dealer with NULL `seller_id` sees nothing).
+- [ ] Re-run the rollup twice for the same day and confirm counts don't double.
+- [ ] Sort `/venta` by each option against real rows; `EXPLAIN` the price sort to
+      confirm `idx_price_sort` is used.
+- [ ] Edit a listing's price down and confirm the "precio bajó" badge appears; run
+      the FX recompute and confirm it does NOT.
 
 **Real-DB pass still owed for Batch 3** (same reason — no MySQL in a web session):
 - [ ] `npm run db:migrate` for `drizzle/0004_*` (`fx_rates` + `rate_convention`).

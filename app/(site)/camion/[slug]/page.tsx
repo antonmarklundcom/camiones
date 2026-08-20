@@ -10,8 +10,10 @@ import {
   categoryByValue,
   conditionLabel,
 } from "@/lib/taxonomy";
-import { waLink, waListingText, waNumber } from "@/lib/whatsapp";
-import { listingPath, sellerPath, ventaPath, absoluteUrl } from "@/lib/urls";
+import { waNumber } from "@/lib/whatsapp";
+import { FreshnessBadge, PriceDropBadge, VerifiedBadge } from "@/components/Badges";
+import { recordRequestEvent } from "@/lib/analytics/request";
+import { listingPath, sellerPath, ventaPath, absoluteUrl, waTrackPath } from "@/lib/urls";
 import { vehicleJsonLd } from "@/lib/jsonld";
 import { JsonLd } from "@/components/JsonLd";
 import { Gallery } from "@/components/Gallery";
@@ -63,8 +65,22 @@ export default async function ListingPage({ params }: Props) {
   ]);
   if (!l) notFound();
 
+  // First-party page view (I8). Fire-and-forget: recordRequestEvent pushes onto
+  // an in-process buffer that flushes as one batched INSERT, so a view costs
+  // the render nothing. Only /camion and /vendedor are counted — logging every
+  // /venta scroll would be the expensive, low-value half of pageview tracking
+  // on shared MySQL.
+  await recordRequestEvent({
+    kind: "page_view",
+    listingId: l.id,
+    sellerId: l.seller.id,
+    path: listingPath(l.slug),
+  });
+
   const category = categoryByValue(l.category);
-  const waHref = waLink(l.seller.phoneWhatsapp, waListingText(l.title));
+  // I8 — CTAs point at the tracked hop (/wa/<publicId>), which logs the click
+  // and then 302s to the real wa.me link built server-side from the DB.
+  const waTrackedHref = waTrackPath(l.publicId);
   const phoneDigits = waNumber(l.seller.phoneWhatsapp);
   const telHref = `tel:+${phoneDigits}`;
   const phoneText = l.seller.phoneDisplay ?? `+${phoneDigits}`;
@@ -153,6 +169,15 @@ export default async function ListingPage({ params }: Props) {
             <p className="mt-1 text-sm text-ink-soft">
               {l.year} · {formatKm(l.km)} · {l.city.name}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <FreshnessBadge publishedAt={l.publishedAt} />
+              <VerifiedBadge verifiedAt={l.seller.verifiedAt} />
+              <PriceDropBadge
+                priceUsd={l.priceUsd}
+                priceUsdPrev={l.priceUsdPrev}
+                priceChangedAt={l.priceChangedAt}
+              />
+            </div>
             <p className="mt-4 font-heading text-3xl font-extrabold text-amber-deep">
               {formatUsd(l.priceUsd)}
             </p>
@@ -160,7 +185,7 @@ export default async function ListingPage({ params }: Props) {
 
             <div className="mt-5 space-y-2.5">
               <a
-                href={waHref}
+                href={waTrackedHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-wa font-heading font-bold text-white transition-colors hover:bg-wa-dark"
@@ -211,6 +236,8 @@ export default async function ListingPage({ params }: Props) {
                 slug: l.slug,
                 title: l.title,
                 priceUsd: Number(l.priceUsd),
+                listingId: l.id,
+                sellerId: l.seller.id,
               })}
               listingTitle={l.title}
             />
@@ -218,7 +245,7 @@ export default async function ListingPage({ params }: Props) {
         </div>
       </div>
 
-      <StickyCtaBar priceUsd={l.priceUsd} waHref={waHref} telHref={telHref} />
+      <StickyCtaBar priceUsd={l.priceUsd} waHref={waTrackedHref} telHref={telHref} />
     </div>
   );
 }

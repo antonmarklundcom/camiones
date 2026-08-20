@@ -8,6 +8,7 @@ import { robotsFor, segmentIndexability } from "@/lib/indexability";
 import { ListingCard } from "@/components/ListingCard";
 import { FilterBar } from "@/components/FilterBar";
 import { Pagination } from "@/components/Pagination";
+import { SortBar } from "@/components/SortBar";
 import { JsonLd } from "@/components/JsonLd";
 import { itemListJsonLd } from "@/lib/jsonld";
 import { formatInt } from "@/lib/format";
@@ -63,7 +64,7 @@ export default async function VentaPage({ params, searchParams }: Props) {
 
   const [total, cards] = await Promise.all([
     countListings(filters),
-    getListingCards(filters, q.page),
+    getListingCards(filters, q.page, PER_PAGE, q.sort),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const h1 = ventaH1(resolved.selection);
@@ -96,6 +97,12 @@ export default async function VentaPage({ params, searchParams }: Props) {
           query={q}
         />
       </div>
+
+      {cards.length > 1 && (
+        <div className="mt-5">
+          <SortBar basePath={basePath} query={q} />
+        </div>
+      )}
 
       {cards.length === 0 ? (
         <div className="mt-10 rounded-xl border border-black/5 bg-white p-10 text-center">

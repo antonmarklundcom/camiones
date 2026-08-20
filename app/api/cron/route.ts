@@ -17,13 +17,15 @@
  */
 import { NextResponse } from "next/server";
 import { recomputeMoney, sweepLeads } from "@/lib/jobs/money";
+import { rollupAnalytics } from "@/lib/jobs/analytics";
+import { flushEvents } from "@/lib/analytics/record";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 // Shared Hostinger MySQL: the recompute walks every listing, so give it room.
 export const maxDuration = 60;
 
-const JOBS = ["all", "cuotas", "leads"] as const;
+const JOBS = ["all", "cuotas", "leads", "analytics"] as const;
 type Job = (typeof JOBS)[number];
 
 function authorize(req: Request): NextResponse | null {
@@ -79,12 +81,21 @@ async function run(req: Request): Promise<NextResponse> {
       job === "all" || job === "cuotas" ? await recomputeMoney() : null;
     const leads = job === "all" || job === "leads" ? await sweepLeads() : null;
 
+    let analytics = null;
+    if (job === "all" || job === "analytics") {
+      // Push whatever is still sitting in the in-process buffer BEFORE
+      // aggregating, so today's tail isn't missed by its own rollup.
+      await flushEvents();
+      analytics = await rollupAnalytics();
+    }
+
     return NextResponse.json({
       ok: true,
       job,
       durationMs: Date.now() - startedAt,
       money,
       leads,
+      analytics,
     });
   } catch (e) {
     // 500 so the pinger's own failure alerting fires — a cron that silently

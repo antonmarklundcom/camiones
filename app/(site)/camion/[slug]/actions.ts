@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pushLead } from "@/lib/crm";
 import { absoluteUrl, listingPath } from "@/lib/urls";
 import type { LeadState } from "@/lib/lead";
+import { recordEvent } from "@/lib/analytics/record";
 
 const leadSchema = z.object({
   nombre: z.string().trim().min(2, "Contanos tu nombre").max(140),
@@ -22,7 +23,14 @@ const leadSchema = z.object({
  * succeeds so a config gap never breaks the form.
  */
 export async function enviarConsulta(
-  listing: { publicId: string; slug: string; title: string; priceUsd: number },
+  listing: {
+    publicId: string;
+    slug: string;
+    title: string;
+    priceUsd: number;
+    listingId?: number;
+    sellerId?: number;
+  },
   _prev: LeadState,
   formData: FormData,
 ): Promise<LeadState> {
@@ -49,6 +57,18 @@ export async function enviarConsulta(
       priceUsd: listing.priceUsd,
     },
   });
+
+  if (result.ok) {
+    // I8 — count the lead in first-party analytics. This is a COUNTER, not lead
+    // storage: the write-ahead `leads` table is audit F1 (Batch 1) and is still
+    // the thing that stops a lead being lost. Do not mistake this for it.
+    recordEvent({
+      kind: "lead",
+      listingId: listing.listingId ?? null,
+      sellerId: listing.sellerId ?? null,
+      path: listingPath(listing.slug),
+    });
+  }
 
   return result.ok
     ? { status: "ok" }

@@ -17,6 +17,7 @@ import {
   type Traction,
   type Transmission,
 } from "@/db/schema";
+import { SORT_ORDER_BY, DEFAULT_SORT, type Sort } from "@/lib/sort";
 import {
   orderPrograms,
   usablePrograms,
@@ -74,6 +75,12 @@ const cardColumns = {
   cityName: locations.name,
   coverKey: images.r2Key,
   publishedAt: listings.publishedAt,
+  // I5 — price-drop badge inputs.
+  priceUsdPrev: listings.priceUsdPrev,
+  priceChangedAt: listings.priceChangedAt,
+  // I6 — verified-seller badge. One indexed PK join, already needed for the
+  // seller name on the detail page.
+  sellerVerifiedAt: sellers.verifiedAt,
 };
 
 function cardSelect() {
@@ -82,10 +89,35 @@ function cardSelect() {
     .from(listings)
     .innerJoin(brands, eq(listings.brandId, brands.id))
     .innerJoin(locations, eq(listings.locationId, locations.id))
+    .innerJoin(sellers, eq(listings.sellerId, sellers.id))
     .leftJoin(
       images,
       and(eq(images.listingId, listings.id), eq(images.sortOrder, 0)),
     );
+}
+
+/**
+ * ORDER BY for the sort controls (I5).
+ *
+ * `featured DESC` leads only the DEFAULT view: featured placement is a paid
+ * slot, but a buyer who asked for "precio: menor a mayor" must get the cheapest
+ * truck first, not the cheapest featured one. `id` is the final tiebreaker so
+ * pagination can never show the same listing on two pages.
+ */
+function orderFor(sort: Sort) {
+  const spec = SORT_ORDER_BY[sort];
+  const col = {
+    publishedAt: listings.publishedAt,
+    priceUsd: listings.priceUsd,
+    year: listings.year,
+    km: listings.km,
+  }[spec.column];
+  const dir = spec.direction === "asc" ? asc : desc;
+  return [
+    ...(spec.featuredFirst ? [desc(listings.featured)] : []),
+    dir(col),
+    desc(listings.id),
+  ];
 }
 
 export type ListingCardData = Awaited<ReturnType<typeof getListingCards>>[number];
@@ -94,10 +126,11 @@ export async function getListingCards(
   f: ListingFilters,
   page = 1,
   perPage = PER_PAGE,
+  sort: Sort = DEFAULT_SORT,
 ) {
   return cardSelect()
     .where(whereFor(f))
-    .orderBy(desc(listings.featured), desc(listings.publishedAt))
+    .orderBy(...orderFor(sort))
     .limit(perPage)
     .offset((page - 1) * perPage);
 }
@@ -165,6 +198,8 @@ export async function getListingBySlug(slug: string) {
       km: listings.km,
       priceUsd: listings.priceUsd,
       priceGs: listings.priceGs,
+      priceUsdPrev: listings.priceUsdPrev,
+      priceChangedAt: listings.priceChangedAt,
       cuotaGs: listings.cuotaGs,
       transmission: listings.transmission,
       fuel: listings.fuel,
@@ -182,6 +217,7 @@ export async function getListingBySlug(slug: string) {
         type: sellers.type,
         phoneWhatsapp: sellers.phoneWhatsapp,
         phoneDisplay: sellers.phoneDisplay,
+        verifiedAt: sellers.verifiedAt,
       },
     })
     .from(listings)
@@ -247,6 +283,7 @@ export async function getSellerBySlug(slug: string) {
       name: sellers.name,
       slug: sellers.slug,
       type: sellers.type,
+      verifiedAt: sellers.verifiedAt,
       phoneWhatsapp: sellers.phoneWhatsapp,
       phoneDisplay: sellers.phoneDisplay,
       email: sellers.email,

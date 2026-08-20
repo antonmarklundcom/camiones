@@ -217,6 +217,7 @@ export async function updateListing(
       status: listings.status,
       featured: listings.featured,
       publishedAt: listings.publishedAt,
+      priceUsd: listings.priceUsd,
     })
     .from(listings)
     .where(eq(listings.id, id))
@@ -233,6 +234,14 @@ export async function updateListing(
   const title = `${name} ${input.model} ${input.year}`;
   const money = await moneyFields(input);
 
+  // I5 — remember the old US$ price so the card can say "precio bajó". Only on
+  // a real US$ move; the FX recompute changes price_gs alone, so a guaraní
+  // swing can never fake a drop.
+  const priceMoved = Number(current.priceUsd) !== Number(money.priceUsd);
+  const priceHistory = priceMoved
+    ? { priceUsdPrev: current.priceUsd, priceChangedAt: new Date() }
+    : {};
+
   // Slug/publicId are stable (inbound-link safe) — never recomputed on edit.
 
   await db
@@ -246,6 +255,7 @@ export async function updateListing(
       year: input.year,
       km: input.km,
       ...money,
+      ...priceHistory,
       transmission: input.transmission,
       fuel: input.fuel,
       traction: input.traction,

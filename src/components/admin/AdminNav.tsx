@@ -13,6 +13,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin", label: "Inicio" },
   { href: "/admin/listings", label: "Avisos" },
   { href: "/admin/sellers", label: "Concesionarias" },
+  { href: "/admin/analytics", label: "Estadísticas" },
   { href: "/admin/guias", label: "Guías", adminOnly: true },
   { href: "/admin/cotizacion", label: "Cotización", adminOnly: true },
   { href: "/admin/users", label: "Usuarios", adminOnly: true },
