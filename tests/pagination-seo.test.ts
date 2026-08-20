@@ -77,3 +77,32 @@ describe("F15 — seller pagination drops filter params", () => {
     expect(s).toContain("page=3");
   });
 });
+
+/**
+ * F16 regression: the /venta grid must build its canonical through
+ * `paginatedCanonical()`. The helper was correct and tested from day one — the
+ * page just never called it, so every paginated grid URL canonicalised to page
+ * 1 while ALSO sending noindex, which is the contradictory pair F16 names.
+ * The seller page did it right, which is what made the gap easy to miss.
+ */
+describe("venta grid canonical (F16 wiring)", () => {
+  const canonicalFor = (basePath: string, page: number) =>
+    paginatedCanonical(basePath, page);
+
+  it("page 1 canonicalises to the clean segment URL", () => {
+    expect(canonicalFor("/venta", 1)).toBe("/venta");
+    expect(canonicalFor("/venta/camiones/scania", 1)).toBe("/venta/camiones/scania");
+  });
+
+  it("page ≥2 canonicalises to itself, not back to page 1", () => {
+    expect(canonicalFor("/venta", 2)).toBe("/venta?page=2");
+    expect(canonicalFor("/venta/camiones/scania", 4)).toBe(
+      "/venta/camiones/scania?page=4",
+    );
+  });
+
+  it("pairs with noindex on page ≥2 — self-canonical, not indexed", () => {
+    expect(paginationIndexability(2, { state: "index" }).state).toBe("noindex");
+    expect(paginationIndexability(1, { state: "index" }).state).toBe("index");
+  });
+});

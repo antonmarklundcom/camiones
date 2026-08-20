@@ -7,7 +7,7 @@ import {
   frenchAmortization,
   type FinancingProgram,
 } from "@/lib/cuota";
-import { formatGs } from "@/lib/format";
+import { formatGs, formatPct } from "@/lib/format";
 
 /**
  * Live cuota calculator — down-payment % + term sliders → monthly ₲ using the
@@ -41,14 +41,17 @@ export function CuotaCalculator({
   const [codeIdx, setCodeIdx] = useState(initialIdx);
   const program = active[Math.min(codeIdx, active.length - 1)];
 
-  const [downPct, setDownPct] = useState(() =>
-    program ? Math.ceil(program.minDownPct) : 20,
-  );
+  // The program's EXACT minimum, not Math.ceil() of it: defaultCuota() caches
+  // the card figure at the exact minimum, so rounding up here made the two
+  // surfaces quote different cuotas for the same truck whenever a program had
+  // a fractional minimum (12,5% → the calculator opened at 13%). That is
+  // precisely the mismatch F5 exists to remove.
+  const [downPct, setDownPct] = useState(() => program?.minDownPct ?? 20);
   const [term, setTerm] = useState(() => (program ? defaultTerm(program) : 48));
 
   if (!program) return null;
 
-  const minDown = Math.ceil(program.minDownPct);
+  const minDown = program.minDownPct;
   const effDownPct = Math.max(downPct, minDown);
   const downGs = Math.round(priceGs * (effDownPct / 100));
   const financedGs = priceGs - downGs;
@@ -69,7 +72,7 @@ export function CuotaCalculator({
   const selectProgram = (i: number) => {
     const p = active[i];
     setCodeIdx(i);
-    setDownPct((d) => Math.max(d, Math.ceil(p.minDownPct)));
+    setDownPct((d) => Math.max(d, p.minDownPct));
     setTerm((t) => Math.min(t, p.maxTermMonths));
   };
 
@@ -105,7 +108,7 @@ export function CuotaCalculator({
         <span className="flex justify-between text-sm text-ink">
           <span>Entrega inicial</span>
           <strong>
-            {effDownPct}% · {formatGs(downGs)}
+            {formatPct(effDownPct)}% · {formatGs(downGs)}
           </strong>
         </span>
         <input
