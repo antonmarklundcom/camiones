@@ -1,16 +1,28 @@
 "use client";
 import { useMemo, useState } from "react";
 import {
+  RATE_CONVENTION_LABELS,
+  defaultProgram,
+  defaultTerm,
   frenchAmortization,
   type FinancingProgram,
 } from "@/lib/cuota";
 import { formatGs } from "@/lib/format";
 
 /**
- * Live cuota calculator — down-payment % + term sliders → monthly ₲ using
- * the selected financing program (French amortization, same math as the
- * nightly cache cron). Rates are PLACEHOLDERS until Phase 4 verifies real
- * bank terms; the disclaimer is not optional.
+ * Live cuota calculator — down-payment % + term sliders → monthly ₲ using the
+ * selected financing program (French amortization, same math as the cron).
+ *
+ * F5: it OPENS on `defaultProgram()` / `defaultTerm()` — the exact program and
+ * term the cron cached on the card the buyer just clicked. It used to open on
+ * 48 months against whichever program MySQL returned first, so the number on
+ * the card and the number on the page disagreed.
+ *
+ * F26: the monthly rate honours each program's stored convention (TEA vs
+ * nominal) instead of always dividing by 12.
+ *
+ * The caller only ever passes verified programs (`usablePrograms()` filters
+ * placeholders out), and the whole section is behind the `financing` flag.
  */
 export function CuotaCalculator({
   priceGs,
@@ -20,15 +32,19 @@ export function CuotaCalculator({
   programs: FinancingProgram[];
 }) {
   const active = useMemo(() => programs.filter((p) => p.active), [programs]);
-  const [codeIdx, setCodeIdx] = useState(0);
+  const initialIdx = useMemo(() => {
+    const preferred = defaultProgram(priceGs, active);
+    const i = preferred ? active.findIndex((p) => p.code === preferred.code) : -1;
+    return i >= 0 ? i : 0;
+  }, [active, priceGs]);
+
+  const [codeIdx, setCodeIdx] = useState(initialIdx);
   const program = active[Math.min(codeIdx, active.length - 1)];
 
   const [downPct, setDownPct] = useState(() =>
-    program ? Math.max(20, Math.ceil(program.minDownPct)) : 20,
+    program ? Math.ceil(program.minDownPct) : 20,
   );
-  const [term, setTerm] = useState(() =>
-    program ? Math.min(48, program.maxTermMonths) : 48,
-  );
+  const [term, setTerm] = useState(() => (program ? defaultTerm(program) : 48));
 
   if (!program) return null;
 
@@ -41,7 +57,14 @@ export function CuotaCalculator({
     program.maxAmountGs !== null && financedGs > program.maxAmountGs;
   const monthly = overCap
     ? 0
-    : Math.round(frenchAmortization(financedGs, program.annualRate, effTerm));
+    : Math.round(
+        frenchAmortization(
+          financedGs,
+          program.annualRate,
+          effTerm,
+          program.rateConvention,
+        ),
+      );
 
   const selectProgram = (i: number) => {
     const p = active[i];
@@ -123,23 +146,24 @@ export function CuotaCalculator({
         ) : (
           <>
             <p className="text-xs uppercase tracking-wide text-ink-soft">
-              Cuota mensual estimada
+              Cuota mensual estimada*
             </p>
             <p className="font-heading text-3xl font-extrabold text-amber-deep">
               {formatGs(monthly)}
             </p>
             <p className="mt-1 text-xs text-ink-soft">
               Financiás {formatGs(financedGs)} a {effTerm} meses ·{" "}
-              {program.annualRate}% anual
+              {program.annualRate}%{" "}
+              {program.rateConvention === "nominal" ? "nominal anual" : "TEA"}
             </p>
           </>
         )}
       </div>
 
       <p className="mt-3 text-xs leading-relaxed text-ink-soft">
-        Cálculo referencial con tasas de ejemplo (placeholder) — no constituye
-        una oferta de crédito. Consultá las condiciones vigentes con tu banco o
-        financiera.
+        * Cálculo referencial con {RATE_CONVENTION_LABELS[program.rateConvention ?? "nominal"]}
+        {" "}— no constituye una oferta de crédito. Consultá las condiciones
+        vigentes con tu banco o financiera.
       </p>
     </section>
   );

@@ -27,7 +27,8 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   ADMIN_PASSWORD, and it announces any role promotion (F21 fixed).
 - `npm run import:csv -- <file.csv> <seller-slug> [--dry-run] [--publish] [--create-seller]`
   (contract: `data/ejemplo-inventario.csv` + `data/README-import.md`). ALWAYS `--dry-run` first.
-- `npm run cron:cuotas`, `npm run content:guides` (Anthropic batch → drafts only)
+- `npm run cron:cuotas` (same function as `GET /api/cron?job=cuotas` — see
+  `docs/cron.md`), `npm run content:guides` (Anthropic batch → drafts only)
 - tsx does NOT auto-load `.env` — set `DATABASE_URL` in the shell for scripts.
 
 ## Architecture map
@@ -37,6 +38,8 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   canonical segment URL, robots-disallowed).
 - `app/(admin)/admin/` panel; `login/` sits outside the auth-gated `(panel)` group.
 - `src/lib/import/` the CSV importer's plan/commit engine (see traps below).
+- `src/lib/jobs/money.ts` the scheduled money work, shared by `/api/cron` and the CLI.
+- `src/lib/fx.ts` the DB FX rate; `src/lib/flags.ts` feature flags (Batch 4 folds these into `site.config.ts`).
 - `src/lib/` engine logic: `queries.ts` (all public reads), `venta-params.ts`
   (segment-URL resolution — category/brand/city/condition share one namespace by
   precedence), `indexability.ts` (shared page/sitemap contract), `urls.ts`,
@@ -44,9 +47,10 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - `src/lib/auth/`: iron-session + bcryptjs (NOT native bcrypt — Hostinger can't
   compile addons). Every server action self-guards (`requireUser`/`requireAdmin`,
   `assertCanManageSeller`); dealers scoped to their `sellerId`.
-- `src/db/schema.ts`: 10 tables. Roles: `admin | dealer` (staff planned, Batch 4).
+- `src/db/schema.ts`: 11 tables. Roles: `admin | dealer` (staff planned, Batch 4).
   `import_jobs`/`import_rows` are the import journal (Batch 2, `drizzle/0003_*`);
-  `listings.external_id` is the dealer's own chapa/stock ID.
+  `listings.external_id` is the dealer's own chapa/stock ID; `fx_rates` +
+  `financing_programs.rate_convention` are Batch 3 (`drizzle/0004_*`).
 - Uploads re-encode to WebP via sharp at ingest (long edge ≤1600, q80).
 
 ## Deliberate non-features & traps (do not "fix" casually)
@@ -55,13 +59,34 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   This is audit F1 (P0) and changes in Batch 1 to store-then-forward. Until then:
   unset `GHL_WEBHOOK_URL` in prod silently drops leads while reporting success.
 - **No FK constraints** — integrity is app-side until Batch 4 adds real FKs.
-- **Financing rates are PLACEHOLDERS** ("(PLACEHOLDER)" in DB names). Decision:
-  financing hides behind a feature flag until real verified rates exist. Never
-  ship visible placeholder money figures.
-- **`cuota_gs` and `price_gs` are cached snapshots** — only recomputed by
-  `cron:cuotas` (not yet wired to any scheduler; Batch 3 wires a guarded route +
-  external pinger). FX rate is a static env `USD_TO_PYG` until Batch 3 moves it
-  to the DB.
+- **Financing rates are PLACEHOLDERS** ("(PLACEHOLDER)" in DB names) and the
+  marker is LOAD-BEARING, not cosmetic: `usablePrograms()` in `src/lib/cuota.ts`
+  filters on exactly that string, so while it is there no cuota renders anywhere
+  and the cron NULLs every cached `cuota_gs`. Removing it from a program name is
+  the act of declaring a rate verified. On top of that, `FEATURE_FINANCING`
+  (`src/lib/flags.ts`, `NEXT_PUBLIC_FEATURE_FINANCING`) is **default OFF** — belt
+  and braces. Never ship visible placeholder money figures.
+- **Rates carry a convention** (F26): `financing_programs.rate_convention` is
+  `tea | nominal`, default `tea` (Paraguayan quotes usually are). `cuota.ts`
+  converts — TEA compounds ((1+a)^(1/12)−1), nominal divides by 12. Reading a
+  TEA figure as nominal OVERSTATES the cuota (the audit's F26 note has the
+  direction inverted; the fix is the same).
+- **ONE shared cuota default** (F5): `defaultProgram()` + `defaultTerm()`
+  (48 months, capped). The cron caches exactly what the detail-page calculator
+  opens with, so a card can't quote a number the calculator contradicts.
+  `getActivePrograms()` orders deterministically — do NOT drop the ordering.
+- **`cuota_gs` and `price_gs` are DERIVED caches**, both owned by
+  `recomputeMoney()` (`src/lib/jobs/money.ts`). USD is the primary price; ₲ is
+  `price_usd × the active DB rate` (`fx_rates`, edited at `/admin/cotizacion`,
+  append-only with history). `USD_TO_PYG` is now ONLY a bootstrap fallback for
+  an empty `fx_rates` table — once a row exists the env var is ignored, so
+  nobody can "fix" prices by editing it.
+- **Scheduled jobs run through `/api/cron`** (F4) — guarded by `CRON_SECRET`
+  (Bearer header or `?token=`), 401 without it, **503 when the secret is unset**
+  (fail closed). Hit by an external pinger, NOT a Hostinger per-slot cron; setup
+  in `docs/cron.md`. `npm run cron:cuotas` is a thin CLI over the same function,
+  so manual and scheduled runs can't diverge. The lead retry sweep
+  (`sweepLeads()`) is a deliberate no-op until F1/Batch 1 adds the `leads` table.
 - **The importer is safe now, and its rules are load-bearing** (F2/F3/F12/F28 fixed
   in Batch 2). `scripts/import-csv.ts` is a thin CLI over `src/lib/import/`:
   `contract.ts` (CSV → validated row) → `identity.ts` → `plan.ts` (`buildPlan()`,
@@ -139,7 +164,8 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `uploads.ts`, `listing-policy.ts`, `venta-namespace.ts` and the import
   planner (`import-identity` / `import-merge` / `import-plan`) — the pure
   functions where a silent regression misquotes money, breaks canonical URLs
-  or duplicates a dealer's inventory.
+  or duplicates a dealer's inventory — plus `cuota-defaults` / `fx` for the
+  Batch 3 money rules.
   Keep the suite sub-second so the hook stays tolerable. No Playwright.
 - `<img>` on R2 photos is deliberate (pass-through loader, prepaid-data budget) —
   keep the per-site `eslint-disable-next-line @next/next/no-img-element` comments.

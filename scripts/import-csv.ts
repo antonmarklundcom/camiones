@@ -24,6 +24,7 @@ import { parseCsv } from "../src/lib/csv";
 import { slugify } from "../src/lib/slug";
 import { buildPlan } from "../src/lib/import/plan";
 import { formatSummary } from "../src/lib/import/report";
+import { getActiveFxRate } from "../src/lib/fx";
 import {
   closeJob,
   commitPlan,
@@ -34,8 +35,6 @@ import {
   loadPrograms,
   openJob,
 } from "../src/lib/import/run";
-
-const USD_TO_PYG = Number(process.env.USD_TO_PYG ?? 7300);
 
 const USAGE =
   "uso: npm run import:csv -- <file.csv> <seller-slug> [--dry-run] [--publish] [--create-seller]";
@@ -61,7 +60,18 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const [lookups, programs] = await Promise.all([loadLookups(), loadPrograms()]);
+  const [lookups, programs, fx] = await Promise.all([
+    loadLookups(),
+    loadPrograms(),
+    // F11 — ₲ comes from the active DB rate, not a build-time env constant.
+    getActiveFxRate(),
+  ]);
+  if (fx.fallback) {
+    console.log(
+      `\nℹ Sin cotización en fx_rates: se usa USD_TO_PYG=${fx.rate}. ` +
+        `Cargá la real en /admin/cotizacion — el próximo cron recalcula los ₲.`,
+    );
+  }
   const seller = await findSeller(sellerSlug);
 
   // --- plan (no writes) -----------------------------------------------------
@@ -75,7 +85,7 @@ async function main(): Promise<number> {
     sellerId: seller?.id ?? null,
     sellerExists: seller !== null,
     programs,
-    usdToPyg: USD_TO_PYG,
+    usdToPyg: fx.rate,
     publish,
     createSeller,
     now: new Date(),
@@ -125,7 +135,7 @@ async function main(): Promise<number> {
     sellerId: sellerRef?.id ?? null,
     sellerExists: true,
     programs,
-    usdToPyg: USD_TO_PYG,
+    usdToPyg: fx.rate,
     publish,
     createSeller,
     now: new Date(),

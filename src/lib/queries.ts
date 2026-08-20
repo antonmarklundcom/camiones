@@ -17,7 +17,12 @@ import {
   type Traction,
   type Transmission,
 } from "@/db/schema";
-import type { FinancingProgram } from "@/lib/cuota";
+import {
+  orderPrograms,
+  usablePrograms,
+  type FinancingProgram,
+  type RateConvention,
+} from "@/lib/cuota";
 
 export const PER_PAGE = 12;
 
@@ -196,7 +201,17 @@ export async function getListingBySlug(slug: string) {
   return { ...row, images: imgs };
 }
 
-/** Active programs for the cuota calculator (placeholder rates until Phase 4). */
+/**
+ * Programs the public site may quote from.
+ *
+ * F5: `orderPrograms()` gives a deterministic order — this query had no ORDER
+ * BY, so "whichever row MySQL happened to return first" decided which program
+ * the detail-page calculator opened on.
+ *
+ * `usablePrograms()` drops anything still carrying the "(PLACEHOLDER)" marker,
+ * so a page literally cannot render a made-up rate even if the `financing`
+ * feature flag were switched on by mistake.
+ */
 export async function getActivePrograms(): Promise<FinancingProgram[]> {
   const rows = await db
     .select()
@@ -207,15 +222,20 @@ export async function getActivePrograms(): Promise<FinancingProgram[]> {
         eq(financingPrograms.status, "published"),
       ),
     );
-  return rows.map((p) => ({
-    code: p.code,
-    name: p.name,
-    annualRate: Number(p.annualRate),
-    maxTermMonths: p.maxTermMonths,
-    maxAmountGs: p.maxAmountGs != null ? Number(p.maxAmountGs) : null,
-    minDownPct: Number(p.minDownPct),
-    active: p.active,
-  }));
+  return orderPrograms(
+    usablePrograms(
+      rows.map((p) => ({
+        code: p.code,
+        name: p.name,
+        annualRate: Number(p.annualRate),
+        maxTermMonths: p.maxTermMonths,
+        maxAmountGs: p.maxAmountGs != null ? Number(p.maxAmountGs) : null,
+        minDownPct: Number(p.minDownPct),
+        active: p.active,
+        rateConvention: p.rateConvention as RateConvention,
+      })),
+    ),
+  );
 }
 
 /* ------------------------------ seller page ------------------------------ */

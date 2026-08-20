@@ -20,16 +20,22 @@ const lookups: ImportLookups = {
   cityBySlug: new Map([["asuncion", { id: 9, slug: "asuncion" }]]),
 };
 
+/** A VERIFIED program — a "(PLACEHOLDER)" one is filtered out by cuota.ts. */
 const programs: FinancingProgram[] = [
   {
     code: "demo",
-    name: "Demo (PLACEHOLDER)",
+    name: "Banco verificado",
     annualRate: 12,
     maxTermMonths: 60,
     maxAmountGs: null,
     minDownPct: 20,
     active: true,
+    rateConvention: "nominal",
   },
+];
+
+const placeholderPrograms: FinancingProgram[] = [
+  { ...programs[0], code: "fake", name: "Banco inventado (PLACEHOLDER)" },
 ];
 
 function record(over: Record<string, string> = {}): Record<string, string> {
@@ -205,6 +211,18 @@ describe("publish-state preservation (F3)", () => {
 
     const still = planWithExisting(record({ km: "341000" }), existing());
     expect(still.rows[0].changed).not.toContain("cuotaGs");
+  });
+
+  it("never caches a cuota derived from a PLACEHOLDER rate (F5)", () => {
+    const key = buildPlan(input({ records: [record()] })).rows[0].importKey!;
+    const plan = buildPlan(
+      input({
+        records: [record({ precio_usd: "99000" })],
+        existingByKey: new Map([[key, existing()]]),
+        programs: placeholderPrograms,
+      }),
+    );
+    expect(plan.rows[0].values.cuotaGs).toBeNull();
   });
 });
 

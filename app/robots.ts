@@ -9,7 +9,8 @@ export default function robots(): MetadataRoute.Robots {
         allow: "/",
         // /buscar is the form-redirect endpoint — never a destination.
         // /admin is the private panel (also noindexed via its own layout).
-        disallow: ["/buscar", "/admin"],
+        // /api is machine-only (the guarded cron route lives there).
+        disallow: ["/buscar", "/admin", "/api"],
       },
     ],
     sitemap: `${siteOrigin()}/sitemap.xml`,

@@ -5,6 +5,10 @@ import { formatCuota, formatKm, formatUsd } from "@/lib/format";
 import { TRANSMISSION_LABELS, conditionLabel } from "@/lib/taxonomy";
 import { imageUrl } from "@/lib/r2";
 import { listingPath } from "@/lib/urls";
+import { FEATURE_FINANCING } from "@/lib/flags";
+import { DEFAULT_TERM_MONTHS } from "@/lib/cuota";
+
+const CUOTA_DEFAULT_LABEL = `Cuota estimada a ${DEFAULT_TERM_MONTHS} meses con entrega inicial mínima`;
 
 /**
  * Listing card. The ENTIRE card is wrapped in <Link> — this was a real bug in
@@ -18,7 +22,12 @@ export function ListingCard({
   priority?: boolean;
 }) {
   const cover = imageUrl(listing.coverKey) ?? "/placeholder-truck-1.webp";
-  const cuota = formatCuota(listing.cuotaGs);
+  // F5/flag: the cuota line only renders when financing is switched on AND a
+  // verified (non-placeholder) program produced the cached figure — the cron
+  // NULLs cuota_gs whenever no usable program exists, so this is belt and
+  // braces. Whatever shows is marked "estimada*": it is the shared default
+  // program/term, the same one the detail-page calculator opens with.
+  const cuota = FEATURE_FINANCING ? formatCuota(listing.cuotaGs) : null;
 
   return (
     <Link
@@ -57,7 +66,13 @@ export function ListingCard({
         <p className="mt-auto flex items-center justify-between pt-1 text-sm">
           <span className="text-ink-soft">{listing.cityName}</span>
           {cuota ? (
-            <span className="font-semibold text-amber-deep">{cuota}</span>
+            <span
+              className="font-semibold text-amber-deep"
+              title={`${CUOTA_DEFAULT_LABEL}. No es una oferta de crédito.`}
+            >
+              {cuota}{" "}
+              <span className="font-normal text-ink-soft">estimada*</span>
+            </span>
           ) : null}
         </p>
       </div>

@@ -16,6 +16,7 @@ import { vehicleJsonLd } from "@/lib/jsonld";
 import { JsonLd } from "@/components/JsonLd";
 import { Gallery } from "@/components/Gallery";
 import { CuotaCalculator } from "@/components/CuotaCalculator";
+import { FEATURE_FINANCING } from "@/lib/flags";
 import { ContactForm } from "@/components/ContactForm";
 import { StickyCtaBar } from "@/components/StickyCtaBar";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
@@ -176,7 +177,12 @@ export default async function ListingPage({ params }: Props) {
             </div>
           </div>
 
-          <CuotaCalculator priceGs={Number(l.priceGs)} programs={programs} />
+          {/* Financing is behind a flag (Decisions Log) and `programs` is
+              already filtered to verified, non-placeholder rates — so this
+              renders nothing until real terms exist. */}
+          {FEATURE_FINANCING && programs.length > 0 ? (
+            <CuotaCalculator priceGs={Number(l.priceGs)} programs={programs} />
+          ) : null}
 
           {/* Seller card */}
           <div className="rounded-xl border border-black/5 bg-white p-5 shadow-sm">

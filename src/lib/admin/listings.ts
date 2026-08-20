@@ -15,7 +15,13 @@ import {
 } from "@/db/schema";
 import { slugify } from "@/lib/slug";
 import { generatePublicId } from "@/lib/public-id";
-import { bestCuota, type FinancingProgram } from "@/lib/cuota";
+import {
+  defaultCuota,
+  usablePrograms,
+  type FinancingProgram,
+  type RateConvention,
+} from "@/lib/cuota";
+import { getActiveFxRate, priceGsFromUsd } from "@/lib/fx";
 import type { SessionUser } from "@/lib/auth/session";
 import { assertCanManageSeller, resolveOwningSeller } from "@/lib/auth/guard";
 
@@ -34,8 +40,6 @@ export {
   LISTING_STATUS_LABELS,
   type ListingStatus,
 } from "@/lib/admin/constants";
-
-const USD_TO_PYG = Number(process.env.USD_TO_PYG ?? 7300);
 
 /**
  * Shared input schema for create + edit. Numbers arrive as strings from
@@ -108,6 +112,7 @@ async function loadPrograms(): Promise<FinancingProgram[]> {
     maxAmountGs: p.maxAmountGs != null ? Number(p.maxAmountGs) : null,
     minDownPct: Number(p.minDownPct),
     active: p.active,
+    rateConvention: p.rateConvention as RateConvention,
   }));
 }
 
@@ -121,13 +126,21 @@ async function brandName(brandId: number): Promise<string> {
   return b.name;
 }
 
-/** Derived money + cuota fields shared by create and update. */
+/**
+ * Derived money + cuota fields shared by create and update.
+ *
+ * F11: ₲ comes from the ACTIVE DB rate, not the old build-time env constant.
+ * F5: the cached cuota is `defaultCuota()` — the same program and term the
+ * detail-page calculator opens with, so a card can't quote a number the
+ * calculator then contradicts.
+ */
 async function moneyFields(input: ListingInput) {
+  const fx = await getActiveFxRate();
   const priceGs =
     input.priceGs && input.priceGs > 0
       ? input.priceGs
-      : Math.round(input.priceUsd * USD_TO_PYG);
-  const cuota = bestCuota(priceGs, await loadPrograms());
+      : priceGsFromUsd(input.priceUsd, fx.rate);
+  const cuota = defaultCuota(priceGs, usablePrograms(await loadPrograms()));
   return {
     priceUsd: input.priceUsd.toFixed(2),
     priceGs: String(priceGs),
