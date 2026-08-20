@@ -4,7 +4,7 @@ import { countListings, getListingCards, getSellerBySlug, PER_PAGE } from "@/lib
 import { sellerPath } from "@/lib/urls";
 import { recordRequestEvent } from "@/lib/analytics/request";
 import { VerifiedBadge } from "@/components/Badges";
-import { waLink, waNumber } from "@/lib/whatsapp";
+import { telLink, waLink, waNumber } from "@/lib/whatsapp";
 import { ListingCard } from "@/components/ListingCard";
 import { Pagination } from "@/components/Pagination";
 import { JsonLd } from "@/components/JsonLd";
@@ -77,8 +77,11 @@ export default async function SellerPage({ params, searchParams }: Props) {
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
-  const phoneDigits = waNumber(seller.phoneWhatsapp);
-  const phoneText = seller.phoneDisplay ?? `+${phoneDigits}`;
+  // F6 — a seller with no number gets no contact buttons at all, rather than a
+  // "+" button and a wa.me error page. The listings below are still the point
+  // of the page; a dealer without a phone is a dealer we have to go ask.
+  const telHref = telLink(seller.phoneWhatsapp);
+  const phoneText = seller.phoneDisplay ?? (telHref ? `+${waNumber(seller.phoneWhatsapp)}` : null);
   const waHref = waLink(
     seller.phoneWhatsapp,
     `Hola, vi su página en camiones.com.py y quiero consultar por su stock`,
@@ -119,23 +122,29 @@ export default async function SellerPage({ params, searchParams }: Props) {
             </p>
           </div>
         </div>
-        <div className="mt-4 flex gap-2.5 sm:mt-0">
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-12 items-center gap-2 rounded-lg bg-wa px-5 font-heading font-bold text-white transition-colors hover:bg-wa-dark"
-          >
-            <WhatsAppIcon className="h-5 w-5" />
-            Escribinos
-          </a>
-          <a
-            href={`tel:+${phoneDigits}`}
-            className="flex h-12 items-center rounded-lg border border-charcoal-950/20 px-5 font-heading font-bold text-ink hover:border-charcoal-950"
-          >
-            {phoneText}
-          </a>
-        </div>
+        {(waHref || telHref) && (
+          <div className="mt-4 flex gap-2.5 sm:mt-0">
+            {waHref && (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-12 items-center gap-2 rounded-lg bg-wa px-5 font-heading font-bold text-white transition-colors hover:bg-wa-dark"
+              >
+                <WhatsAppIcon className="h-5 w-5" />
+                Escribinos
+              </a>
+            )}
+            {telHref && phoneText && (
+              <a
+                href={telHref}
+                className="flex h-12 items-center rounded-lg border border-charcoal-950/20 px-5 font-heading font-bold text-ink hover:border-charcoal-950"
+              >
+                {phoneText}
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       {seller.description && (

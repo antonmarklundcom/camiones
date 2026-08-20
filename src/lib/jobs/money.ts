@@ -24,6 +24,7 @@ import {
   type RateConvention,
 } from "@/lib/cuota";
 import { getActiveFxRate, priceGsFromUsd } from "@/lib/fx";
+import { sweepPendingLeads } from "@/lib/crm";
 
 export interface MoneyJobResult {
   rate: number;
@@ -140,22 +141,23 @@ export interface LeadSweepResult {
 }
 
 /**
- * Lead delivery retry sweep.
+ * Lead delivery retry sweep (F1).
  *
- * DELIBERATE NO-OP FOR NOW. The write-ahead `leads` table is audit F1, which
- * belongs to Batch 1 and has not landed yet (PLAN.md marks it NOT STARTED), so
- * there is nothing to retry: leads are still fire-and-forget at
- * src/lib/crm.ts. The seam exists here so wiring F1 is a body swap in one
- * function rather than a change to the cron contract, the route, the auth or
- * the response shape.
+ * Every lead is written to `leads` before the CRM is contacted, so a webhook
+ * outage costs a retry rather than the enquiry. This picks up the rows the CRM
+ * has not accepted yet, applies each lead's own backoff, and parks a lead as
+ * `failed` once it is out of attempts or the CRM rejected it permanently (bad
+ * key, bad payload) — those are visible in the DB for a human to work.
  */
 export async function sweepLeads(): Promise<LeadSweepResult> {
+  // F1 landed: the `leads` table is the write-ahead log and this retries every
+  // row the CRM has not accepted yet, honouring each lead's own backoff.
+  const outcome = await sweepPendingLeads();
   return {
-    attempted: 0,
-    delivered: 0,
-    failed: 0,
-    skipped:
-      "La tabla `leads` todavía no existe (F1 / Batch 1). Cuando exista, " +
-      "implementá el reintento acá y el cron ya lo ejecuta.",
+    attempted: outcome.attempted,
+    delivered: outcome.delivered,
+    failed: outcome.failed,
+    skipped: null,
   };
 }
+

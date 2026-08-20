@@ -14,7 +14,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { listings, sellers } from "@/db/schema";
 import { recordRequestEvent } from "@/lib/analytics/request";
-import { waLink, waListingText, waNumber } from "@/lib/whatsapp";
+import { waLink, waListingText } from "@/lib/whatsapp";
 import { listingPath } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +47,8 @@ export async function GET(
   // F6 — a seller with no number and no configured fallback has no WhatsApp
   // link to send anyone to. Bounce back to the listing rather than to
   // wa.me/?text=… , which is a WhatsApp error page.
-  if (!waNumber(row.phone)) {
+  const target = waLink(row.phone, waListingText(row.title));
+  if (!target) {
     return NextResponse.redirect(new URL(listingPath(row.slug), requestOrigin()), 302);
   }
 
@@ -58,7 +59,7 @@ export async function GET(
     path: listingPath(row.slug),
   });
 
-  const res = NextResponse.redirect(waLink(row.phone, waListingText(row.title)), 302);
+  const res = NextResponse.redirect(target, 302);
   // This URL is a tracking hop, never a destination — keep it out of caches
   // and out of the index.
   res.headers.set("Cache-Control", "no-store");

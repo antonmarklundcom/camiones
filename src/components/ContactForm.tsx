@@ -1,6 +1,7 @@
 "use client";
 import { useActionState } from "react";
 import type { LeadState } from "@/lib/lead";
+import { HONEYPOT_FIELD } from "@/lib/rate-limit";
 
 /**
  * 3-field contact form (nombre, teléfono, mensaje — PLAN.md max). Progressive
@@ -30,6 +31,20 @@ export function ContactForm({
 
   return (
     <form action={formAction} className="space-y-3" aria-label="Formulario de consulta">
+      {/*
+        F9 — honeypot. Off-screen rather than display:none (some bots skip
+        hidden fields), never focusable, hidden from assistive tech, and
+        excluded from autofill so a password manager can't trip it for a real
+        person. Anything in it and the action silently reports success.
+      */}
+      <input
+        type="text"
+        name={HONEYPOT_FIELD}
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        style={{ position: "absolute", left: "-9999px" }}
+      />
       <div>
         <label htmlFor="lead-nombre" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft">
           Nombre

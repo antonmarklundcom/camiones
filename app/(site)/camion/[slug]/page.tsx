@@ -10,7 +10,7 @@ import {
   categoryByValue,
   conditionLabel,
 } from "@/lib/taxonomy";
-import { waNumber } from "@/lib/whatsapp";
+import { hasWhatsApp, telLink, waNumber } from "@/lib/whatsapp";
 import { FreshnessBadge, PriceDropBadge, VerifiedBadge } from "@/components/Badges";
 import { recordRequestEvent } from "@/lib/analytics/request";
 import { listingPath, sellerPath, ventaPath, absoluteUrl, waTrackPath } from "@/lib/urls";
@@ -80,10 +80,15 @@ export default async function ListingPage({ params }: Props) {
   const category = categoryByValue(l.category);
   // I8 — CTAs point at the tracked hop (/wa/<publicId>), which logs the click
   // and then 302s to the real wa.me link built server-side from the DB.
-  const waTrackedHref = waTrackPath(l.publicId);
-  const phoneDigits = waNumber(l.seller.phoneWhatsapp);
-  const telHref = `tel:+${phoneDigits}`;
-  const phoneText = l.seller.phoneDisplay ?? `+${phoneDigits}`;
+  // F6 — every contact CTA is conditional on a real number existing. A seller
+  // with no phone and no site fallback used to render "Llamanos · +" and a
+  // wa.me link with no recipient; the contact FORM below still works, and is
+  // the only channel we can honestly offer in that case.
+  const hasWa = hasWhatsApp(l.seller.phoneWhatsapp);
+  const waTrackedHref = hasWa ? waTrackPath(l.publicId) : null;
+  const telHref = telLink(l.seller.phoneWhatsapp);
+  const phoneText =
+    l.seller.phoneDisplay ?? (telHref ? `+${waNumber(l.seller.phoneWhatsapp)}` : null);
 
   const galleryImages = l.images
     .map((img) => ({ url: imageUrl(img.r2Key)!, alt: img.alt ?? l.title }))
@@ -183,23 +188,29 @@ export default async function ListingPage({ params }: Props) {
             </p>
             <p className="text-sm text-ink-soft">{formatGs(l.priceGs)}</p>
 
-            <div className="mt-5 space-y-2.5">
-              <a
-                href={waTrackedHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-wa font-heading font-bold text-white transition-colors hover:bg-wa-dark"
-              >
-                <WhatsAppIcon className="h-5 w-5" />
-                Escribinos por WhatsApp
-              </a>
-              <a
-                href={telHref}
-                className="flex h-12 w-full items-center justify-center rounded-lg border border-charcoal-950/20 font-heading font-bold text-ink transition-colors hover:border-charcoal-950"
-              >
-                Llamanos · {phoneText}
-              </a>
-            </div>
+            {(waTrackedHref || telHref) && (
+              <div className="mt-5 space-y-2.5">
+                {waTrackedHref && (
+                  <a
+                    href={waTrackedHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-wa font-heading font-bold text-white transition-colors hover:bg-wa-dark"
+                  >
+                    <WhatsAppIcon className="h-5 w-5" />
+                    Escribinos por WhatsApp
+                  </a>
+                )}
+                {telHref && phoneText && (
+                  <a
+                    href={telHref}
+                    className="flex h-12 w-full items-center justify-center rounded-lg border border-charcoal-950/20 font-heading font-bold text-ink transition-colors hover:border-charcoal-950"
+                  >
+                    Llamanos · {phoneText}
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Financing is behind a flag (Decisions Log) and `programs` is
@@ -217,7 +228,9 @@ export default async function ListingPage({ params }: Props) {
             <p className="mt-1 font-heading text-lg font-bold text-ink">
               {l.seller.name}
             </p>
-            <p className="mt-0.5 text-sm text-ink-soft">Tel: {phoneText}</p>
+            {phoneText && (
+              <p className="mt-0.5 text-sm text-ink-soft">Tel: {phoneText}</p>
+            )}
             <Link
               href={sellerPath(l.seller.slug)}
               className="mt-3 inline-block text-sm font-semibold text-amber-deep hover:underline"

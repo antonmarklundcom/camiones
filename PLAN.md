@@ -5,7 +5,7 @@
 > STATUS line below, and commits it. Next session starts by reading this file — no
 > re-discovery from zero.
 >
-> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 Batch 0 — DONE` · `Batch 1 — 8 of 13 fixes done` — last updated 2026-08-20**
+> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 Batch 0 — DONE` · `Batch 1 — DONE` · `Batch 2 — DONE` · `Batch 3 — DONE` · `Batch 5 — DONE` — last updated 2026-08-20**
 > Remaining Phase 4 items are blocked on real data (dealer inventory, verified financing rates) — see Phase 4.
 > **Next work = Phase 6** (batches 0–7 below), driven by `docs/audit-camiones.md` + the Decisions Log.
 > Read `CLAUDE.md` first in every session.
@@ -211,7 +211,7 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
       > **Still on Anton (hPanel/GitHub UI, not code):** enable branch protection on
       > `main` with NO required status check + auto-merge; keep Actions disabled and
       > the billing spending limit at $0.
-- [ ] **Batch 1 — independent fixes** (one small PR each, parallel) — **PARTLY DONE**:
+- [x] **Batch 1 — independent fixes** ✅ 2026-08-20 (the remaining five landed together in one PR):
   - [x] session revalidation (F8) — `src/lib/auth/revalidate.ts`, called from `getCurrentUser()`
   - [x] serverActions bodySizeLimit + logo/hero caps (F10) — `src/lib/uploads.ts` + `next.config.ts`
   - [x] filter indexes (F14) — `drizzle/0002_*`, index shapes match the real /venta queries
@@ -220,11 +220,27 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
   - [x] seed-admin `--rotate` guard (F21)
   - [x] slug-namespace uniqueness (F24) — `src/lib/venta-namespace.ts`, wired into both taxonomy seeds
   - [x] status-transition rules + admin-only `featured` (F27) — `src/lib/admin/listing-policy.ts`
-  - [ ] leads write-ahead table + CRM retry (F1) — **NOT STARTED** (see note below)
-  - [ ] contact-CTA hide/fallback when no phone (F6) — **NOT STARTED**
-  - [ ] rate limit + honeypot (F9) — **NOT STARTED**
-  - [ ] runtime caching (F13) — **NOT STARTED**
-  - [ ] GHL → VenderCRM lead-sink switch — **NOT STARTED**
+  - [x] leads write-ahead table + CRM retry (F1) — `leads` table (`drizzle/0006_*`) + `src/lib/crm/` store-then-forward, backoff retry via the cron sweep, permanent-failure parking
+  - [x] contact-CTA hide/fallback when no phone (F6) — `waLink()`/`telLink()` return null; placeholder/all-zero/short numbers count as absent; every CTA null-checked
+  - [x] rate limit + honeypot (F9) — `src/lib/rate-limit.ts` (leads 5/10min per visitor, login 8/10min per IP *and* email), honeypot `website`, and the forgeable `listing` argument re-read from the DB
+  - [x] runtime caching (F13) — brands/cities via `unstable_cache` (5 min, tag `taxonomy`) + React `cache()`; measured 2 taxonomy queries cold, 0 warm per `/venta` view
+  - [x] GHL → VenderCRM lead-sink switch — `LEAD_SINK` picks `vendercrm|ghl|none` (unset = auto-detect); VenderCRM per the tenant-scoped `/api/v1/leads` contract
+
+> **Batch 1 remainder as built (2026-08-20):** one PR, verified against a live
+> MariaDB 10.11 with a stub CRM. F1: `leads` is a write-ahead log — the row is
+> committed before any network call, so the buyer only ever sees an error if we
+> failed to KEEP their message. Verified: happy path stored + forwarded; CRM
+> returning 500 left the lead `pending` and the sweep delivered it once the CRM
+> came back; a 422 parked it as `failed` instead of retrying a bad payload
+> forever; with no sink configured the lead was still stored and production
+> logged loudly. `idempotency_key` (phone + listing + hour) collapses
+> double-clicks onto one CRM contact. F9: verified in a real browser — the
+> honeypot submission returned the same "¡Gracias!" as a real one and wrote NO
+> row, and the 6th enquiry in ten minutes was refused in es-PY while five went
+> through. F6: with the seller's phone NULL and no site fallback, zero
+> `wa.me/?text=` and zero `tel:+` links render anywhere on the detail, seller,
+> home or grid pages — the contact form remains. F13: measured with MySQL's
+> general log, a `/venta` view costs 2 taxonomy queries cold and 0 warm.
 
 > **Correction (2026-08-20):** PR #7 was believed to have landed Batch 0 plus the
 > first five Batch 1 fixes (F1, F6, F9, F10, F13) and the GHL→VenderCRM switch.

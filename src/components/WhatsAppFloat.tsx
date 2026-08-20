@@ -7,9 +7,14 @@ import { WhatsAppIcon } from "@/components/WhatsAppIcon";
  * mobile so the two never overlap.
  */
 export function WhatsAppFloat() {
+  // F6 — no site-wide number configured means no button. A floating CTA that
+  // opens a WhatsApp error page is worse than no CTA at all.
+  const href = waLink(null, WA_GENERIC_TEXT);
+  if (!href) return null;
+
   return (
     <a
-      href={waLink(null, WA_GENERIC_TEXT)}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Escribinos por WhatsApp"
