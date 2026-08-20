@@ -3,6 +3,8 @@
  * server-side on indexed scalar columns (idx_search) — no client-side
  * filtering anywhere.
  */
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { and, asc, count, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -156,21 +158,54 @@ export async function getRecentListings(n: number) {
 
 /* ---------------------------- taxonomy lookups --------------------------- */
 
-export async function getPublishedBrands() {
-  return db
+/**
+ * F13 — brands and cities are the hottest reads on the site and the coldest
+ * data in the database: a handful of rows that change when someone adds a
+ * brand, i.e. almost never. Every `/venta` view loaded BOTH tables twice
+ * (once in generateMetadata, once in the body — Next dedupes fetch, not DB
+ * calls), so an anonymous browse session was paying four pointless queries a
+ * page on shared Hostinger MySQL.
+ *
+ * Two layers, deliberately:
+ *  - `unstable_cache` gives a 5-minute cross-request TTL. A new brand shows up
+ *    within five minutes; the seeds and admin writes call revalidateTag() to
+ *    make it immediate.
+ *  - `cache()` (React) dedupes within ONE request, which is what collapses the
+ *    metadata + body double-read even on a cold cache.
+ *
+ * Deliberately NOT applied to listing queries: those change constantly and a
+ * stale grid is a worse failure than a slow one.
+ */
+export const TAXONOMY_TAG = "taxonomy";
+const TAXONOMY_TTL_SECONDS = 300;
+
+const brandsUncached = async () =>
+  db
     .select({ id: brands.id, name: brands.name, slug: brands.slug })
     .from(brands)
     .where(eq(brands.status, "published"))
     .orderBy(asc(brands.name));
-}
 
-export async function getCities() {
-  return db
+const citiesUncached = async () =>
+  db
     .select({ id: locations.id, name: locations.name, slug: locations.slug })
     .from(locations)
     .where(and(eq(locations.level, "ciudad"), eq(locations.status, "published")))
     .orderBy(asc(locations.name));
-}
+
+export const getPublishedBrands = cache(
+  unstable_cache(brandsUncached, ["taxonomy:brands"], {
+    revalidate: TAXONOMY_TTL_SECONDS,
+    tags: [TAXONOMY_TAG],
+  }),
+);
+
+export const getCities = cache(
+  unstable_cache(citiesUncached, ["taxonomy:cities"], {
+    revalidate: TAXONOMY_TTL_SECONDS,
+    tags: [TAXONOMY_TAG],
+  }),
+);
 
 /** Published-listing count per category — home tiles + sitemap. */
 export async function categoryCounts(): Promise<Record<string, number>> {

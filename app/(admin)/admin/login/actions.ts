@@ -6,6 +6,8 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { verifyPassword } from "@/lib/auth/password";
 import { getSession } from "@/lib/auth/session";
+import { headers } from "next/headers";
+import { LOGIN_LIMIT, checkRateLimit } from "@/lib/rate-limit";
 
 export interface LoginState {
   error?: string;
@@ -25,6 +27,19 @@ export async function login(
     password: formData.get("password"),
   });
   const invalid: LoginState = { error: "Email o contraseña incorrectos." };
+
+  // F9 — brute force had nothing in its way. Keyed on IP *and* the submitted
+  // email, so one attacker cannot lock a legitimate admin out of their own
+  // account by spraying their address from elsewhere.
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "unknown";
+  const email = parsed.success ? parsed.data.email.toLowerCase() : "invalid";
+  for (const key of [`login:ip:${ip}`, `login:user:${email}`]) {
+    if (!checkRateLimit(key, LOGIN_LIMIT).allowed) {
+      return { error: "Demasiados intentos. Esperá unos minutos y probá de nuevo." };
+    }
+  }
+
   if (!parsed.success) return invalid;
 
   const [user] = await db

@@ -521,3 +521,64 @@ export const analyticsDaily = mysqlTable(
     index("idx_daily_listing").on(t.listingId, t.day),
   ],
 );
+
+/* ------------------------------------------------------------------ */
+/* Leads: write-ahead log, then forward to the CRM (F1)                */
+/* ------------------------------------------------------------------ */
+
+export const LEAD_STATUS_VALUES = ["pending", "sent", "failed"] as const;
+export type LeadStatus = (typeof LEAD_STATUS_VALUES)[number];
+
+/**
+ * F1 — leads used to be fire-and-forget: the contact form POSTed a webhook and
+ * kept nothing, so an unset `GHL_WEBHOOK_URL` in production silently dropped
+ * every enquiry while telling the buyer "gracias, te contactamos". A truck
+ * enquiry is the single most valuable event on this site.
+ *
+ * The row is written FIRST and committed before any network call. Delivery is
+ * an attribute of the row, not a precondition for keeping it: `pending` rows
+ * are retried by the cron sweep, `failed` rows are visible in /admin and can
+ * be worked by hand. Nothing is ever lost to a webhook outage.
+ */
+export const leads = mysqlTable(
+  "leads",
+  {
+    id: id(),
+    name: varchar("name", { length: 140 }).notNull(),
+    phone: varchar("phone", { length: 30 }).notNull(),
+    message: text("message").notNull(),
+
+    // Denormalised on purpose: the CRM payload must survive the listing being
+    // edited, unpublished or deleted after the enquiry was made.
+    listingId: fk("listing_id"),
+    sellerId: fk("seller_id"),
+    listingPublicId: char("listing_public_id", { length: 10 }),
+    listingTitle: varchar("listing_title", { length: 180 }),
+    listingUrl: varchar("listing_url", { length: 500 }),
+    priceUsd: decimal("price_usd", { precision: 12, scale: 2 }),
+
+    pageUrl: varchar("page_url", { length: 500 }),
+    referrerHost: varchar("referrer_host", { length: 120 }),
+
+    /**
+     * Stable per submission: a double-click, or a retry after a timeout that
+     * actually succeeded, must not create two contacts in the CRM.
+     */
+    idempotencyKey: varchar("idempotency_key", { length: 100 }).notNull().unique(),
+
+    status: mysqlEnum("status", LEAD_STATUS_VALUES).notNull().default("pending"),
+    /** Which sink took it: "vendercrm" | "ghl" | "none". */
+    sink: varchar("sink", { length: 30 }),
+    attempts: int("attempts", { unsigned: true }).notNull().default(0),
+    lastError: varchar("last_error", { length: 500 }),
+    lastAttemptAt: datetime("last_attempt_at"),
+    sentAt: datetime("sent_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // The sweep's driving query: pending rows, oldest attempt first.
+    index("idx_lead_delivery").on(t.status, t.lastAttemptAt),
+    index("idx_lead_listing").on(t.listingId, t.createdAt),
+    index("idx_lead_seller").on(t.sellerId, t.createdAt),
+  ],
+);

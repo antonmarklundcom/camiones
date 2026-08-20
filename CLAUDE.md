@@ -65,9 +65,19 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 
 ## Deliberate non-features & traps (do not "fix" casually)
 
-- **Leads are NOT stored in the DB** — fire-and-forget GHL webhook (`src/lib/crm.ts`).
-  This is audit F1 (P0) and changes in Batch 1 to store-then-forward. Until then:
-  unset `GHL_WEBHOOK_URL` in prod silently drops leads while reporting success.
+- **Leads are STORED FIRST, then forwarded** (F1). `src/lib/crm/`: the row is
+  written to `leads` and committed BEFORE any network call, so a CRM outage
+  costs a retry, never the enquiry. `pending` rows are retried by the cron
+  sweep with backoff (1/5/15/60/240 min, 6 attempts); a permanent rejection
+  (400/401/403/422) parks the row as `failed` immediately instead of re-POSTing
+  a bad payload forever. The buyer only sees an error if the DB write itself
+  failed. With no sink configured leads are STILL captured and production logs
+  loudly that nothing is being forwarded.
+- **The lead sink is config-chosen**: `LEAD_SINK=vendercrm|ghl|none`, or unset
+  to auto-detect from whichever credentials exist. VenderCRM is the primary
+  (`VENDERCRM_URL` + `VENDERCRM_API_KEY`, one key per site, server-side only,
+  `idempotency_key` on every call, and NEVER pipeline/stage/owner/tag — routing
+  lives on the site record in the CRM).
 - **No FK constraints** — integrity is app-side until Batch 4 adds real FKs.
 - **Financing rates are PLACEHOLDERS** ("(PLACEHOLDER)" in DB names) and the
   marker is LOAD-BEARING, not cosmetic: `usablePrograms()` in `src/lib/cuota.ts`
