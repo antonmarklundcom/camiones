@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, count, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, count, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   brands,
@@ -17,11 +17,28 @@ import type { SessionUser } from "@/lib/auth/session";
  * outside their own sellerId. Admins see everything.
  */
 
+/**
+ * F20 — the scope MUST fail closed. Previously a dealer whose `sellerId` was
+ * NULL fell through to the admin branch (empty filter) and could read every
+ * seller's rows. Anything that is not a confirmed admin, or is a dealer
+ * without a seller, now gets a condition that matches nothing.
+ */
+const MATCH_NOTHING = sql`1 = 0`;
+
 function listingScope(user: SessionUser): SQL[] {
+  if (user.role === "admin") return [];
   if (user.role === "dealer" && user.sellerId) {
     return [eq(listings.sellerId, user.sellerId)];
   }
-  return [];
+  return [MATCH_NOTHING];
+}
+
+function sellerScope(user: SessionUser): SQL[] {
+  if (user.role === "admin") return [];
+  if (user.role === "dealer" && user.sellerId) {
+    return [eq(sellers.id, user.sellerId)];
+  }
+  return [MATCH_NOTHING];
 }
 
 export async function listAdminListings(user: SessionUser) {
@@ -84,10 +101,7 @@ export type AdminListingDetail = NonNullable<
 /* --------------------------------- sellers -------------------------------- */
 
 export async function listAdminSellers(user: SessionUser) {
-  const scope =
-    user.role === "dealer" && user.sellerId
-      ? [eq(sellers.id, user.sellerId)]
-      : [];
+  const scope = sellerScope(user);
   const rows = await db
     .select({
       id: sellers.id,
@@ -117,7 +131,7 @@ export async function listAdminSellers(user: SessionUser) {
 }
 
 export async function getAdminSeller(user: SessionUser, id: number) {
-  if (user.role === "dealer" && user.sellerId !== id) return null;
+  if (user.role !== "admin" && user.sellerId !== id) return null;
   const [row] = await db.select().from(sellers).where(eq(sellers.id, id)).limit(1);
   return row ?? null;
 }

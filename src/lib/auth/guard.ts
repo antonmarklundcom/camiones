@@ -1,11 +1,34 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { getSession, type SessionUser } from "@/lib/auth/session";
+import { revalidateSessionUser } from "@/lib/auth/revalidate";
 
-/** Current user or undefined — for conditional UI (nav, "mine only" filters). */
+/**
+ * Current user or undefined — for conditional UI (nav, "mine only" filters).
+ *
+ * F8: the cookie is only a claim of identity. The role/sellerId returned here
+ * always come from the DB row, so demotions, dealer reassignments and user
+ * deletions take effect on the next request instead of up to 30 days later.
+ */
 export async function getCurrentUser(): Promise<SessionUser | undefined> {
   const session = await getSession();
-  return session.user;
+  const claimed = session.user;
+  if (!claimed) return undefined;
+
+  const result = await revalidateSessionUser(claimed);
+  if (!result.ok) {
+    // Best-effort revoke. Server components can't mutate cookies in Next 15
+    // (it throws during render), so a failure here is expected and harmless:
+    // the guard still refuses the request.
+    try {
+      session.destroy();
+      await session.save();
+    } catch {
+      /* read-only render context — the rejection below is what matters */
+    }
+    return undefined;
+  }
+  return result.user;
 }
 
 /**
