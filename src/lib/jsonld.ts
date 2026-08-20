@@ -6,6 +6,7 @@
 import { FUEL_LABELS, TRANSMISSION_LABELS, categoryByValue } from "@/lib/taxonomy";
 import { absoluteUrl, listingPath, siteOrigin } from "@/lib/urls";
 import { imageUrl } from "@/lib/r2";
+import { siteConfig } from "@site.config";
 import type { getListingBySlug, ListingCardData } from "@/lib/queries";
 
 type ListingDetail = NonNullable<Awaited<ReturnType<typeof getListingBySlug>>>;
@@ -99,10 +100,10 @@ export function articleJsonLd(g: {
     ...(hero ? { image: [hero.startsWith("/") ? absoluteUrl(hero) : hero] } : {}),
     datePublished: g.publishedAt ? new Date(g.publishedAt).toISOString() : undefined,
     dateModified: new Date(g.updatedAt).toISOString(),
-    author: { "@type": "Organization", name: "camiones.com.py" },
+    author: { "@type": "Organization", name: siteConfig.name },
     publisher: {
       "@type": "Organization",
-      name: "camiones.com.py",
+      name: siteConfig.name,
       logo: { "@type": "ImageObject", url: absoluteUrl("/icon.svg") },
     },
   };
@@ -112,10 +113,9 @@ export function organizationJsonLd(): object {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "camiones.com.py",
+    name: siteConfig.name,
     url: siteOrigin(),
     logo: absoluteUrl("/icon.svg"),
-    description:
-      "Portal de camiones y vehículos de trabajo en Paraguay. Encontrá tu camión con financiación y atención por WhatsApp.",
+    description: siteConfig.description,
   };
 }

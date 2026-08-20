@@ -4,6 +4,8 @@
  * a number fall back to NEXT_PUBLIC_DEFAULT_WHATSAPP (a placeholder until the
  * real business line exists — never invent numbers).
  */
+import { siteConfig } from "@site.config";
+
 
 /**
  * F6 — a number nobody answers is worse than no number.
@@ -53,9 +55,8 @@ export function telLink(phone: string | null | undefined): string | null {
 
 /** Prefill for a listing detail CTA (PLAN.md exact copy). */
 export function waListingText(title: string): string {
-  return `Hola, vi el ${title} en camiones.com.py y quiero consultar`;
+  return `Hola, vi el ${title} en ${siteConfig.name} y quiero consultar`;
 }
 
 /** Generic prefill for the floating button. */
-export const WA_GENERIC_TEXT =
-  "Hola, estoy buscando un camión y los encontré en camiones.com.py";
+export const WA_GENERIC_TEXT = `Hola, estoy buscando un camión y los encontré en ${siteConfig.name}`;

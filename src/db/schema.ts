@@ -22,6 +22,7 @@ import {
   text,
   tinyint,
   uniqueIndex,
+  type AnyMySqlColumn,
   varchar,
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
@@ -29,6 +30,22 @@ import { sql } from "drizzle-orm";
 const id = () =>
   bigint("id", { mode: "number", unsigned: true }).autoincrement().primaryKey();
 const fk = (name: string) => bigint(name, { mode: "number", unsigned: true });
+
+/**
+ * F19 — real foreign keys. Integrity was app-side only, which meant a bad
+ * delete left listings pointing at a brand that no longer exists and nothing
+ * complained until a page 500'd.
+ *
+ * The policy, per the Decisions Log:
+ *  - CASCADE where the child is meaningless without the parent (a listing's
+ *    photos, an import job's rows).
+ *  - RESTRICT where deleting the parent would silently destroy business data
+ *    (a seller/brand/city still referenced by listings). The delete fails loudly
+ *    and a human decides what to do with the stock.
+ *  - SET NULL for *audit* references (who updated a row) and for leads and
+ *    analytics, which must OUTLIVE the listing they refer to — that is exactly
+ *    why `leads` denormalises the listing title and URL.
+ */
 const createdAt = () =>
   datetime("created_at").notNull().default(sql`CURRENT_TIMESTAMP`);
 const publishedAt = () => datetime("published_at");
@@ -74,7 +91,9 @@ export const listings = mysqlTable(
 
     condition: mysqlEnum("condition", CONDITION_VALUES).notNull(),
     category: mysqlEnum("category", CATEGORY_VALUES).notNull(),
-    brandId: fk("brand_id").notNull(),
+    brandId: fk("brand_id")
+      .notNull()
+      .references(() => brands.id, { onDelete: "restrict", onUpdate: "cascade" }),
     model: varchar("model", { length: 120 }).notNull(),
     year: smallint("year", { unsigned: true }).notNull(),
     km: int("km", { unsigned: true }).notNull().default(0),
@@ -99,8 +118,13 @@ export const listings = mysqlTable(
 
     description: text("description"),
 
-    locationId: fk("location_id").notNull(), // ciudad-level node
-    sellerId: fk("seller_id").notNull(),
+    locationId: fk("location_id")
+      .notNull()
+      // ciudad-level node
+      .references(() => locations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    sellerId: fk("seller_id")
+      .notNull()
+      .references(() => sellers.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
     featured: boolean("featured").notNull().default(false), // home "destacados"
     /**
@@ -135,7 +159,9 @@ export const listings = mysqlTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`)
       .$onUpdate(() => new Date()),
-    updatedBy: fk("updated_by"), // users.id; NULL for scripts/imports
+    // users.id; NULL for scripts/imports, and SET NULL if that user is deleted
+    // — an audit trail must not block deleting a person who left.
+    updatedBy: fk("updated_by").references(() => users.id, { onDelete: "set null" }),
   },
   (t) => [
     index("idx_search").on(
@@ -177,7 +203,9 @@ export const images = mysqlTable(
   "images",
   {
     id: id(),
-    listingId: fk("listing_id").notNull(),
+    listingId: fk("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade", onUpdate: "cascade" }),
     // R2 object key, or a "/..."-prefixed path served from /public (seed
     // placeholders). src/lib/r2.ts owns the URL building.
     r2Key: varchar("r2_key", { length: 500 }).notNull(),
@@ -207,7 +235,9 @@ export const locations = mysqlTable(
   "locations",
   {
     id: id(),
-    parentId: fk("parent_id"),
+    parentId: fk("parent_id").references((): AnyMySqlColumn => locations.id, {
+      onDelete: "restrict",
+    }),
     level: mysqlEnum("level", ["pais", "departamento", "ciudad"]).notNull(),
     name: varchar("name", { length: 120 }).notNull(),
     slug: varchar("slug", { length: 140 }).notNull(),
@@ -270,10 +300,11 @@ export const users = mysqlTable("users", {
   // a NULL password_hash meant a row that login logic had to special-case.
   email: varchar("email", { length: 190 }).notNull().unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-  role: mysqlEnum("role", ["admin", "dealer"]).notNull().default("dealer"),
+  // Kept in sync with src/lib/auth/roles.ts ROLES.
+  role: mysqlEnum("role", ["admin", "staff", "dealer"]).notNull().default("dealer"),
   // NULL only for admins. A dealer with NULL seller_id is a broken row: the
   // admin read scope fails closed on it (src/lib/admin/queries.ts).
-  sellerId: fk("seller_id"),
+  sellerId: fk("seller_id").references(() => sellers.id, { onDelete: "restrict" }),
   createdAt: createdAt(),
 });
 
@@ -332,7 +363,7 @@ export const contentPages = mysqlTable(
     body: text("body").notNull(), // Markdown
     heroR2Key: varchar("hero_r2_key", { length: 500 }),
     // Optional links so brand hubs / category intros can surface matching stock.
-    brandId: fk("brand_id"),
+    brandId: fk("brand_id").references(() => brands.id, { onDelete: "set null" }),
     category: mysqlEnum("category", CATEGORY_VALUES),
     source: varchar("source", { length: 40 }).notNull().default("manual"),
     status: mysqlEnum("status", ["draft", "published"])
@@ -344,7 +375,7 @@ export const contentPages = mysqlTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`)
       .$onUpdate(() => new Date()),
-    updatedBy: fk("updated_by"),
+    updatedBy: fk("updated_by").references(() => users.id, { onDelete: "set null" }),
   },
   (t) => [index("idx_content_list").on(t.status, t.kind, t.publishedAt)],
 );
@@ -377,7 +408,9 @@ export const importJobs = mysqlTable(
     id: id(),
     sourceFile: varchar("source_file", { length: 300 }).notNull(),
     sellerSlug: varchar("seller_slug", { length: 180 }).notNull(),
-    sellerId: fk("seller_id"),
+    // SET NULL, not CASCADE: the journal is an audit trail and must outlive
+    // the seller it describes.
+    sellerId: fk("seller_id").references(() => sellers.id, { onDelete: "set null" }),
     mode: mysqlEnum("mode", IMPORT_MODE_VALUES).notNull().default("dry_run"),
     // Exact CLI flags, so a run is reproducible from the journal alone.
     flags: varchar("flags", { length: 300 }).notNull().default(""),
@@ -408,12 +441,14 @@ export const importRows = mysqlTable(
   "import_rows",
   {
     id: id(),
-    jobId: fk("job_id").notNull(),
+    jobId: fk("job_id")
+      .notNull()
+      .references(() => importJobs.id, { onDelete: "cascade" }),
     rowNo: int("row_no", { unsigned: true }).notNull(), // 1-based CSV line (header = 1)
     action: mysqlEnum("action", IMPORT_ACTION_VALUES).notNull(),
     importKey: char("import_key", { length: 40 }),
     externalId: varchar("external_id", { length: 120 }),
-    listingId: fk("listing_id"),
+    listingId: fk("listing_id").references(() => listings.id, { onDelete: "set null" }),
     // Fields the run actually changed, e.g. "price_usd, km".
     changed: varchar("changed", { length: 500 }),
     message: text("message"),
@@ -453,7 +488,7 @@ export const fxRates = mysqlTable(
     note: varchar("note", { length: 255 }),
     active: boolean("active").notNull().default(false),
     createdAt: createdAt(),
-    createdBy: fk("created_by"), // users.id; NULL when set by a script/cron
+    createdBy: fk("created_by").references(() => users.id, { onDelete: "set null" }), // users.id; NULL when set by a script/cron
   },
   (t) => [index("idx_fx_active").on(t.base, t.quote, t.active, t.createdAt)],
 );
@@ -482,8 +517,10 @@ export const analyticsEvents = mysqlTable(
   {
     id: id(),
     kind: mysqlEnum("kind", EVENT_KIND_VALUES).notNull(),
-    listingId: fk("listing_id"),
-    sellerId: fk("seller_id"),
+    // SET NULL so history survives a deleted listing — a view that happened
+    // still happened.
+    listingId: fk("listing_id").references(() => listings.id, { onDelete: "set null" }),
+    sellerId: fk("seller_id").references(() => sellers.id, { onDelete: "set null" }),
     path: varchar("path", { length: 255 }),
     // Referrer HOST only ("google.com"), never the full URL.
     referrerHost: varchar("referrer_host", { length: 120 }),
@@ -508,8 +545,8 @@ export const analyticsDaily = mysqlTable(
     id: id(),
     day: date("day").notNull(),
     kind: mysqlEnum("kind", EVENT_KIND_VALUES).notNull(),
-    listingId: fk("listing_id"),
-    sellerId: fk("seller_id"),
+    listingId: fk("listing_id").references(() => listings.id, { onDelete: "set null" }),
+    sellerId: fk("seller_id").references(() => sellers.id, { onDelete: "set null" }),
     events: int("events", { unsigned: true }).notNull().default(0),
     visitors: int("visitors", { unsigned: true }).notNull().default(0),
     createdAt: createdAt(),
@@ -549,9 +586,10 @@ export const leads = mysqlTable(
     message: text("message").notNull(),
 
     // Denormalised on purpose: the CRM payload must survive the listing being
-    // edited, unpublished or deleted after the enquiry was made.
-    listingId: fk("listing_id"),
-    sellerId: fk("seller_id"),
+    // edited, unpublished or deleted after the enquiry was made — hence
+    // SET NULL rather than CASCADE. A lead is never deleted by a listing.
+    listingId: fk("listing_id").references(() => listings.id, { onDelete: "set null" }),
+    sellerId: fk("seller_id").references(() => sellers.id, { onDelete: "set null" }),
     listingPublicId: char("listing_public_id", { length: 10 }),
     listingTitle: varchar("listing_title", { length: 180 }),
     listingUrl: varchar("listing_url", { length: 500 }),

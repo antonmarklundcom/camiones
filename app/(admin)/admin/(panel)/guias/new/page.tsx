@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth/guard";
+import { requireCapability } from "@/lib/auth/guard";
 import { getBrandOptions } from "@/lib/admin/queries";
 import { ContentForm } from "@/components/admin/ContentForm";
 import { createContentAction } from "../actions";
@@ -7,7 +7,7 @@ import { createContentAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function NewGuidePage() {
-  await requireAdmin();
+  await requireCapability("manageContent");
   const brands = await getBrandOptions();
 
   return (

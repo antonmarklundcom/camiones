@@ -4,6 +4,7 @@
  * Android.
  */
 import { freshnessLabel, priceDrop } from "@/lib/freshness";
+import { siteConfig } from "@site.config";
 
 const BASE =
   "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold leading-tight";
@@ -24,7 +25,7 @@ export function VerifiedBadge({
   return (
     <span
       className={`${BASE} bg-emerald-50 text-emerald-700 ${className}`}
-      title="Identidad y contacto verificados por camiones.com.py"
+      title={`Identidad y contacto verificados por ${siteConfig.name}`}
     >
       <span aria-hidden="true">✓</span> Verificado
     </span>

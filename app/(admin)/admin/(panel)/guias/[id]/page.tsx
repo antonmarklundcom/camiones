@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth/guard";
+import { requireCapability } from "@/lib/auth/guard";
 import { getAdminContent } from "@/lib/content/queries";
 import { getBrandOptions } from "@/lib/admin/queries";
 import { imageUrl } from "@/lib/r2";
@@ -18,7 +18,7 @@ export default async function EditGuidePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  await requireAdmin();
+  await requireCapability("manageContent");
   const { id: idStr } = await params;
   const id = Number(idStr);
   if (!Number.isInteger(id)) notFound();

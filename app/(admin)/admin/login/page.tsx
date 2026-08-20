@@ -2,6 +2,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { login, type LoginState } from "./actions";
+import { siteConfig } from "@site.config";
 
 const initial: LoginState = {};
 
@@ -15,7 +16,8 @@ export default function LoginPage() {
           href="/"
           className="mb-8 block text-center font-heading text-2xl font-extrabold tracking-tight text-white"
         >
-          camiones<span className="text-amber-brand">.com.py</span>
+          {siteConfig.wordmark.lead}
+          <span className="text-amber-brand">{siteConfig.wordmark.accent}</span>
         </Link>
         <div className="rounded-xl bg-white p-6 shadow-lg">
           <h1 className="font-heading text-xl font-bold text-ink">

@@ -2,6 +2,7 @@
  * Canonical URL + H1 building for the faceted /venta pages.
  * Segment order is fixed (PLAN.md): category → brand → city → condition.
  */
+import { siteConfig } from "@site.config";
 import type { Condition } from "@/db/schema";
 import {
   conditionAdj,
@@ -31,7 +32,7 @@ export function ventaH1(sel: VentaSelection): string {
   const parts: string[] = [sel.category?.plural ?? "Camiones y vehículos de trabajo"];
   if (sel.brand) parts.push(sel.brand.name);
   if (sel.condition) parts.push(conditionAdj(sel.condition, gender));
-  parts.push(sel.city ? `en ${sel.city.name}` : "en Paraguay");
+  parts.push(sel.city ? `en ${sel.city.name}` : `en ${siteConfig.country}`);
   return parts.join(" ");
 }
 
@@ -58,7 +59,7 @@ export function guidePath(slug: string): string {
 
 /** Canonical origin — host comes from env so staging never leaks into SEO. */
 export function siteOrigin(): string {
-  return `https://${process.env.NEXT_PUBLIC_CANONICAL_HOST ?? "camiones.com.py"}`;
+  return `https://${process.env.NEXT_PUBLIC_CANONICAL_HOST ?? siteConfig.defaultHost}`;
 }
 
 export function absoluteUrl(path: string): string {

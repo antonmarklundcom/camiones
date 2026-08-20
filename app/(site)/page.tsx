@@ -12,6 +12,7 @@ import { JsonLd } from "@/components/JsonLd";
 import { organizationJsonLd } from "@/lib/jsonld";
 import { CATEGORIES } from "@/lib/taxonomy";
 import { formatInt } from "@/lib/format";
+import { siteConfig } from "@site.config";
 
 // Reads the live DB on every request (Hostinger builds before it can connect).
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   // Root page keeps the full default title from layout.tsx.
   title: {
-    absolute: "Camiones nuevos y usados en Paraguay | camiones.com.py",
+    absolute: `Camiones nuevos y usados en ${siteConfig.country} | ${siteConfig.name}`,
   },
   description:
     "Encontrá tu camión en Paraguay: nuevos y usados con precios en US$ y ₲. Financiación disponible — consultá por WhatsApp.",
@@ -68,7 +69,7 @@ export default async function HomePage() {
         <div className="mx-auto max-w-6xl px-4 pb-12 pt-10 sm:pb-16 sm:pt-14">
           <h1 className="max-w-2xl font-heading text-4xl font-extrabold leading-tight sm:text-5xl">
             Encontrá tu camión en{" "}
-            <span className="text-amber-brand">Paraguay</span>
+            <span className="text-amber-brand">{siteConfig.country}</span>
           </h1>
           <p className="mt-3 max-w-xl text-white/70">
             Camiones, tractocamiones y utilitarios de trabajo, nuevos y usados.

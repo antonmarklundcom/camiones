@@ -52,6 +52,11 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   (segment-URL resolution — category/brand/city/condition share one namespace by
   precedence), `indexability.ts` (shared page/sitemap contract), `urls.ts`,
   `jsonld.ts`, `cuota.ts` (French amortization), `r2.ts` + `image-loader.ts`.
+- `src/lib/auth/roles.ts`: three roles — `admin` (everything), `staff`
+  (listings/sellers/guides across all sellers, NOT users/roles/money) and
+  `dealer` (own seller only). Gate on CAPABILITIES via `can()` /
+  `requireCapability()`, never on `role === "admin"`: adding a role should mean
+  editing one table, not grepping the tree.
 - `src/lib/auth/`: iron-session + bcryptjs (NOT native bcrypt — Hostinger can't
   compile addons). Every server action self-guards (`requireUser`/`requireAdmin`,
   `assertCanManageSeller`); dealers scoped to their `sellerId`.
@@ -78,7 +83,13 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   (`VENDERCRM_URL` + `VENDERCRM_API_KEY`, one key per site, server-side only,
   `idempotency_key` on every call, and NEVER pipeline/stage/owner/tag — routing
   lives on the site record in the CRM).
-- **No FK constraints** — integrity is app-side until Batch 4 adds real FKs.
+- **Real FK constraints as of `drizzle/0008_*`** (F19): CASCADE where the child
+  is meaningless alone (a listing's photos, an import job's rows), RESTRICT
+  where deleting the parent would destroy business data (seller/brand/city
+  still referenced by listings — the delete fails loudly), SET NULL for audit
+  refs and for `leads`/`analytics_*`, which must OUTLIVE the listing they refer
+  to (that is why `leads` denormalises the listing title and URL). Admin delete
+  paths already pre-check dependents; the FK is the second line of defence.
 - **Financing rates are PLACEHOLDERS** ("(PLACEHOLDER)" in DB names) and the
   marker is LOAD-BEARING, not cosmetic: `usablePrograms()` in `src/lib/cuota.ts`
   filters on exactly that string, so while it is there no cuota renders anywhere

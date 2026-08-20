@@ -15,6 +15,7 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
       "@app": fileURLToPath(new URL("./app", import.meta.url)),
+      "@site.config": fileURLToPath(new URL("./site.config.ts", import.meta.url)),
     },
   },
 });

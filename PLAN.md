@@ -299,7 +299,21 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 > failure mode). Both now have regression tests that reproduce the surfaces
 > rather than the helpers.
 
-- [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
+- [ ] **Batch 4 — template seam** (after 1–3) — **PARTLY DONE**:
+  - [x] `site.config.ts` (F17) — brand name, wordmark, country, description, contact block, locale/currency; the ~12 hardcoded sites now read from it (layout, header, footer, admin chrome, JSON-LD, WhatsApp copy, OG titles, badges). Also fixes F30's "(a confirmar)" mailbox: a null contact line is omitted, not printed.
+  - [x] feature flags — `src/lib/flags.ts` (landed with Batch 3)
+  - [x] lead-sink interface — `src/lib/crm/types.ts` (landed with the Batch 1 remainder)
+  - [x] `staff` role — `admin | staff | dealer` + a CAPABILITIES table; guards use `can()`/`requireCapability()` instead of `role === "admin"`; staff manage listings/sellers/guides but never users, money or `featured`
+  - [x] FK constraints (F19) — `drizzle/0008_*`, 19 constraints, CASCADE/RESTRICT/SET NULL per the Decisions Log, with orphan cleanup ahead of the ALTERs so the migration can't half-apply
+  - [ ] categories table (replaces the enum) — **NOT STARTED** (the biggest remaining piece: touches schema, taxonomy, venta-params, queries, importer, seeds, admin forms and the sitemap, and needs an enum→id data migration)
+  - [ ] message catalogue extraction — **NOT STARTED** (all user-facing copy into one catalogue, one locale per fork)
+
+> **Batch 4 part 1 as built (2026-08-20):** verified against a live MariaDB
+> 10.11 — migrations 0000→0008 on a fresh DB, all 19 FKs present, `seed:all`
+> and the CSV importer both still run with constraints enforced, CASCADE
+> deletes a listing's photos, RESTRICT refuses to delete a brand or seller that
+> still has listings (ERROR 1451), and every public route still returns 200
+> with the brand rendering identically from the config.
 - [x] **Batch 5 — UX wins + first-party analytics** ✅ 2026-08-20: sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.
       > **As built:** sort via `?orden=` (`src/lib/sort.ts`, `SortBar` = plain
       > `rel="nofollow"` links, zero client JS); a non-default order counts as a

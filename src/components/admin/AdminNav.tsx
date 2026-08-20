@@ -1,12 +1,17 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { Role } from "@/lib/auth/roles";
+import { can, type Capability, type Role } from "@/lib/auth/roles";
 
 interface NavItem {
   href: string;
   label: string;
-  adminOnly?: boolean;
+  /**
+   * The capability this section needs. Named rather than role-listed so adding
+   * a role means editing CAPABILITIES in roles.ts, not this file — `staff`
+   * moderate listings, sellers and guides, but never users or money.
+   */
+  needs?: Capability;
 }
 
 const ITEMS: NavItem[] = [
@@ -14,14 +19,14 @@ const ITEMS: NavItem[] = [
   { href: "/admin/listings", label: "Avisos" },
   { href: "/admin/sellers", label: "Concesionarias" },
   { href: "/admin/analytics", label: "Estadísticas" },
-  { href: "/admin/guias", label: "Guías", adminOnly: true },
-  { href: "/admin/cotizacion", label: "Cotización", adminOnly: true },
-  { href: "/admin/users", label: "Usuarios", adminOnly: true },
+  { href: "/admin/guias", label: "Guías", needs: "manageContent" },
+  { href: "/admin/cotizacion", label: "Cotización", needs: "manageMoney" },
+  { href: "/admin/users", label: "Usuarios", needs: "manageUsers" },
 ];
 
 export function AdminNav({ role }: { role: Role }) {
   const pathname = usePathname();
-  const items = ITEMS.filter((i) => !i.adminOnly || role === "admin");
+  const items = ITEMS.filter((i) => !i.needs || can(role, i.needs));
 
   return (
     <nav className="flex gap-1 overflow-x-auto" aria-label="Secciones del panel">
