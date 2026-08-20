@@ -4,7 +4,12 @@ import { notFound } from "next/navigation";
 import { countListings, getListingCards, PER_PAGE } from "@/lib/queries";
 import { parseVentaQuery, resolveSegments, toFilters } from "@/lib/venta-params";
 import { ventaH1, ventaPath } from "@/lib/urls";
-import { robotsFor, segmentIndexability } from "@/lib/indexability";
+import {
+  pageIndexability,
+  paginatedCanonical,
+  robotsFor,
+  segmentIndexability,
+} from "@/lib/indexability";
 import { ListingCard } from "@/components/ListingCard";
 import { FilterBar } from "@/components/FilterBar";
 import { Pagination } from "@/components/Pagination";
@@ -27,13 +32,20 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
   const q = parseVentaQuery(sp);
   const h1 = ventaH1(resolved.selection);
-  const canonical = ventaPath(resolved.selection);
+  const basePath = ventaPath(resolved.selection);
 
-  // Faceted-URL discipline: segment pages may index (thin-page rule applies
-  // in the page body via count); ANY query-param filter → noindex,follow and
-  // canonical points at the clean segment URL.
+  // Faceted-URL discipline: segment pages may index (thin-page rule applies in
+  // the page body via count); ANY query-param filter → noindex,follow with the
+  // canonical pointing at the clean segment URL (the filtered view really is a
+  // subset of it). Pagination is different: page N is its own document, so it
+  // self-canonicalises with ?page=N and is merely noindex (F15).
   const count = await countListings(toFilters(resolved.selection, q));
-  const ix = q.hasFilters || q.page > 1 ? { state: "noindex" as const } : segmentIndexability(count);
+  const canonical = q.hasFilters
+    ? basePath
+    : paginatedCanonical(basePath, q.page);
+  const ix = q.hasFilters
+    ? { state: "noindex" as const }
+    : pageIndexability(q.page, segmentIndexability(count));
 
   // ≤60 chars incl. suffix — trim the H1, not the brand.
   const title = h1.length > 42 ? `${h1.slice(0, 41).trimEnd()}…` : h1;

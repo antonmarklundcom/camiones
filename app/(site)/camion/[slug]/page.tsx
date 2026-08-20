@@ -10,7 +10,7 @@ import {
   categoryByValue,
   conditionLabel,
 } from "@/lib/taxonomy";
-import { waLink, waListingText, waNumber } from "@/lib/whatsapp";
+import { contactChannels, waListingText } from "@/lib/whatsapp";
 import { listingPath, sellerPath, ventaPath, absoluteUrl } from "@/lib/urls";
 import { vehicleJsonLd } from "@/lib/jsonld";
 import { JsonLd } from "@/components/JsonLd";
@@ -63,10 +63,13 @@ export default async function ListingPage({ params }: Props) {
   if (!l) notFound();
 
   const category = categoryByValue(l.category);
-  const waHref = waLink(l.seller.phoneWhatsapp, waListingText(l.title));
-  const phoneDigits = waNumber(l.seller.phoneWhatsapp);
-  const telHref = `tel:+${phoneDigits}`;
-  const phoneText = l.seller.phoneDisplay ?? `+${phoneDigits}`;
+  // F6: with no usable number (seller phone missing AND no site default) the
+  // phone CTAs are hidden rather than rendered dead; the form is the fallback.
+  const contact = contactChannels(
+    l.seller.phoneWhatsapp,
+    l.seller.phoneDisplay,
+    waListingText(l.title),
+  );
 
   const galleryImages = l.images
     .map((img) => ({ url: imageUrl(img.r2Key)!, alt: img.alt ?? l.title }))
@@ -158,21 +161,33 @@ export default async function ListingPage({ params }: Props) {
             <p className="text-sm text-ink-soft">{formatGs(l.priceGs)}</p>
 
             <div className="mt-5 space-y-2.5">
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-wa font-heading font-bold text-white transition-colors hover:bg-wa-dark"
-              >
-                <WhatsAppIcon className="h-5 w-5" />
-                Escribinos por WhatsApp
-              </a>
-              <a
-                href={telHref}
-                className="flex h-12 w-full items-center justify-center rounded-lg border border-charcoal-950/20 font-heading font-bold text-ink transition-colors hover:border-charcoal-950"
-              >
-                Llamanos · {phoneText}
-              </a>
+              {contact.wa && (
+                <a
+                  href={contact.wa}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-wa font-heading font-bold text-white transition-colors hover:bg-wa-dark"
+                >
+                  <WhatsAppIcon className="h-5 w-5" />
+                  Escribinos por WhatsApp
+                </a>
+              )}
+              {contact.tel && (
+                <a
+                  href={contact.tel}
+                  className="flex h-12 w-full items-center justify-center rounded-lg border border-charcoal-950/20 font-heading font-bold text-ink transition-colors hover:border-charcoal-950"
+                >
+                  Llamanos · {contact.phoneText}
+                </a>
+              )}
+              {!contact.wa && (
+                <a
+                  href="#consulta"
+                  className="flex h-12 w-full items-center justify-center rounded-lg bg-charcoal-950 font-heading font-bold text-white transition-colors hover:bg-charcoal-800"
+                >
+                  Consultá por este camión
+                </a>
+              )}
             </div>
           </div>
 
@@ -186,7 +201,9 @@ export default async function ListingPage({ params }: Props) {
             <p className="mt-1 font-heading text-lg font-bold text-ink">
               {l.seller.name}
             </p>
-            <p className="mt-0.5 text-sm text-ink-soft">Tel: {phoneText}</p>
+            {contact.phoneText && (
+              <p className="mt-0.5 text-sm text-ink-soft">Tel: {contact.phoneText}</p>
+            )}
             <Link
               href={sellerPath(l.seller.slug)}
               className="mt-3 inline-block text-sm font-semibold text-amber-deep hover:underline"
@@ -195,24 +212,18 @@ export default async function ListingPage({ params }: Props) {
             </Link>
           </div>
 
-          <div className="rounded-xl border border-black/5 bg-white p-5 shadow-sm">
+          <div id="consulta" className="scroll-mt-4 rounded-xl border border-black/5 bg-white p-5 shadow-sm">
             <h2 className="mb-3 font-heading text-lg font-bold text-ink">
               Consultá por este camión
             </h2>
-            <ContactForm
-              action={enviarConsulta.bind(null, {
-                publicId: l.publicId,
-                slug: l.slug,
-                title: l.title,
-                priceUsd: Number(l.priceUsd),
-              })}
-              listingTitle={l.title}
-            />
+            {/* Only the publicId is bound — the CRM payload is rebuilt from
+                the DB server-side (F9). */}
+            <ContactForm action={enviarConsulta.bind(null, l.publicId)} listingTitle={l.title} />
           </div>
         </div>
       </div>
 
-      <StickyCtaBar priceUsd={l.priceUsd} waHref={waHref} telHref={telHref} />
+      <StickyCtaBar priceUsd={l.priceUsd} waHref={contact.wa} telHref={contact.tel} />
     </div>
   );
 }

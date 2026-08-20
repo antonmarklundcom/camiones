@@ -30,6 +30,12 @@ export function ContactForm({
 
   return (
     <form action={formAction} className="space-y-3" aria-label="Formulario de consulta">
+      {/* Honeypot (F9): off-screen rather than display:none, and never
+          autofilled — humans leave it empty, naive bots fill every field. */}
+      <div aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 overflow-hidden">
+        <label htmlFor="lead-empresa">Empresa (dejar vacío)</label>
+        <input id="lead-empresa" name="empresa" type="text" tabIndex={-1} autoComplete="off" />
+      </div>
       <div>
         <label htmlFor="lead-nombre" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft">
           Nombre

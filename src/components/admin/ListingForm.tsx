@@ -18,6 +18,8 @@ import {
 import {
   LISTING_STATUS_VALUES,
   LISTING_STATUS_LABELS,
+  LISTING_STATUS_TRANSITIONS,
+  type ListingStatus,
 } from "@/lib/admin/constants";
 import type { Role } from "@/lib/auth/roles";
 
@@ -71,6 +73,13 @@ export function ListingForm({
 }: Props) {
   const [state, formAction] = useActionState<ListingFormState, FormData>(action, {});
   const err = state.fieldErrors ?? {};
+
+  // New listings start as drafts; edits are limited to the transitions the
+  // server allows from the CURRENT status (F27).
+  const currentStatus = (values.status as ListingStatus) ?? "draft";
+  const statusOptions = values.status
+    ? LISTING_STATUS_TRANSITIONS[currentStatus]
+    : LISTING_STATUS_VALUES.filter((s) => s === "draft" || s === "published");
 
   const FieldError = ({ name }: { name: string }) =>
     err[name] ? <p className="mt-1 text-xs text-red-600">{err[name]}</p> : null;
@@ -226,16 +235,26 @@ export function ListingForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="status" className={labelCls}>Estado</label>
-              <select id="status" name="status" defaultValue={values.status ?? "draft"} className={inputCls}>
-                {LISTING_STATUS_VALUES.map((s) => (
+              <select id="status" name="status" defaultValue={currentStatus} className={inputCls}>
+                {/* F27: only transitions the server will accept are offered. */}
+                {statusOptions.map((s) => (
                   <option key={s} value={s}>{LISTING_STATUS_LABELS[s]}</option>
                 ))}
               </select>
             </div>
-            <label className="flex items-center gap-3 self-end pb-2">
-              <input type="checkbox" name="featured" defaultChecked={values.featured ?? false} className="h-5 w-5 rounded border-charcoal-100 accent-amber-brand" />
-              <span className="text-sm font-medium text-ink">Destacado (aparece en la home)</span>
-            </label>
+            {/* F27: featured is paid home-page placement — admins only. */}
+            {role === "admin" ? (
+              <label className="flex items-center gap-3 self-end pb-2">
+                <input type="checkbox" name="featured" defaultChecked={values.featured ?? false} className="h-5 w-5 rounded border-charcoal-100 accent-amber-brand" />
+                <span className="text-sm font-medium text-ink">Destacado (aparece en la home)</span>
+              </label>
+            ) : (
+              values.featured && (
+                <p className="self-end pb-2 text-sm text-ink-soft">
+                  Este aviso está destacado en la home.
+                </p>
+              )
+            )}
           </div>
         </div>
       </section>

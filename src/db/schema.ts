@@ -124,6 +124,13 @@ export const listings = mysqlTable(
     index("idx_fresh").on(t.status, t.featured, t.publishedAt),
     index("idx_seller").on(t.sellerId, t.status),
     index("idx_brand").on(t.brandId, t.status),
+    // F14: the grid always ends in `ORDER BY featured DESC, published_at DESC`,
+    // and /venta/scania (brand without category) or /venta/.../usados can't use
+    // idx_search's leading columns. One index per single-facet entry point,
+    // each ending in published_at so the sort is index-ordered too.
+    index("idx_brand_fresh").on(t.status, t.brandId, t.publishedAt),
+    index("idx_city_fresh").on(t.status, t.locationId, t.publishedAt),
+    index("idx_condition_fresh").on(t.status, t.condition, t.publishedAt),
   ],
 );
 
@@ -210,12 +217,59 @@ export const sellers = mysqlTable(
 export const users = mysqlTable("users", {
   id: id(),
   name: varchar("name", { length: 140 }),
-  email: varchar("email", { length: 190 }).unique(),
-  passwordHash: varchar("password_hash", { length: 255 }),
+  // NOT NULL: MySQL allows unlimited NULLs in a UNIQUE column, so a nullable
+  // email means "unique" buys nothing; a NULL hash means an unloggable user.
+  email: varchar("email", { length: 190 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["admin", "dealer"]).notNull().default("dealer"),
   sellerId: fk("seller_id"),
   createdAt: createdAt(),
 });
+
+/* ------------------------------------------------------------------ */
+/* Demand side: leads (write-ahead log before the CRM webhook)         */
+/* ------------------------------------------------------------------ */
+
+export const LEAD_DELIVERY_VALUES = ["pending", "sent", "failed"] as const;
+export type LeadDelivery = (typeof LEAD_DELIVERY_VALUES)[number];
+
+/**
+ * F1 reversal of the original "leads are never stored" decision: the row is
+ * written BEFORE the CRM webhook fires, so an unset URL, a 500 from GHL or a
+ * network timeout costs a delivery attempt, never the lead itself.
+ * scripts/retry-leads.ts re-delivers everything still `pending`/`failed`.
+ * Listing fields are snapshots taken from the DB at capture time (never from
+ * the client) so a later edit doesn't rewrite history.
+ */
+export const leads = mysqlTable(
+  "leads",
+  {
+    id: id(),
+    name: varchar("name", { length: 140 }).notNull(),
+    phone: varchar("phone", { length: 30 }).notNull(),
+    message: text("message").notNull(),
+
+    listingId: fk("listing_id"),
+    listingPublicId: char("listing_public_id", { length: 10 }),
+    listingTitle: varchar("listing_title", { length: 180 }),
+    listingUrl: varchar("listing_url", { length: 300 }),
+    listingPriceUsd: decimal("listing_price_usd", { precision: 12, scale: 2 }),
+    sellerId: fk("seller_id"),
+    sellerSlug: varchar("seller_slug", { length: 180 }),
+
+    delivery: mysqlEnum("delivery", LEAD_DELIVERY_VALUES)
+      .notNull()
+      .default("pending"),
+    attempts: tinyint("attempts", { unsigned: true }).notNull().default(0),
+    lastError: varchar("last_error", { length: 255 }),
+    deliveredAt: datetime("delivered_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("idx_delivery").on(t.delivery, t.createdAt),
+    index("idx_lead_listing").on(t.listingId, t.createdAt),
+  ],
+);
 
 /* ------------------------------------------------------------------ */
 /* Money math: financing programs (cuota engine)                       */

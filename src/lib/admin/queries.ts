@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, count, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, count, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   brands,
@@ -17,11 +17,16 @@ import type { SessionUser } from "@/lib/auth/session";
  * outside their own sellerId. Admins see everything.
  */
 
+/**
+ * F20 — fail CLOSED. A dealer whose `sellerId` is NULL (the schema allows it;
+ * only zod stopped it) used to produce an EMPTY scope, i.e. the admin-wide
+ * view: every seller's rows, read-only but visible. A dealer without a seller
+ * now matches nothing at all.
+ */
 function listingScope(user: SessionUser): SQL[] {
-  if (user.role === "dealer" && user.sellerId) {
-    return [eq(listings.sellerId, user.sellerId)];
-  }
-  return [];
+  if (user.role !== "dealer") return [];
+  if (!user.sellerId) return [sql`1 = 0`];
+  return [eq(listings.sellerId, user.sellerId)];
 }
 
 export async function listAdminListings(user: SessionUser) {
@@ -84,10 +89,12 @@ export type AdminListingDetail = NonNullable<
 /* --------------------------------- sellers -------------------------------- */
 
 export async function listAdminSellers(user: SessionUser) {
-  const scope =
-    user.role === "dealer" && user.sellerId
-      ? [eq(sellers.id, user.sellerId)]
-      : [];
+  const scope: SQL[] =
+    user.role !== "dealer"
+      ? []
+      : user.sellerId
+        ? [eq(sellers.id, user.sellerId)]
+        : [sql`1 = 0`]; // F20: dealer without a seller sees nothing
   const rows = await db
     .select({
       id: sellers.id,

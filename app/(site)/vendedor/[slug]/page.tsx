@@ -2,14 +2,15 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { countListings, getListingCards, getSellerBySlug, PER_PAGE } from "@/lib/queries";
 import { sellerPath } from "@/lib/urls";
-import { waLink, waNumber } from "@/lib/whatsapp";
+import { contactChannels } from "@/lib/whatsapp";
 import { ListingCard } from "@/components/ListingCard";
 import { Pagination } from "@/components/Pagination";
 import { JsonLd } from "@/components/JsonLd";
 import { itemListJsonLd } from "@/lib/jsonld";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 import { formatInt } from "@/lib/format";
-import { parseVentaQuery } from "@/lib/venta-params";
+import { pageOnly, parseVentaQuery } from "@/lib/venta-params";
+import { paginatedCanonical } from "@/lib/indexability";
 import { imageUrl } from "@/lib/r2";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +20,18 @@ interface Props {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: Props): Promise<Metadata> {
   const { slug } = await params;
   const seller = await getSellerBySlug(slug);
   if (!seller) return { title: "Vendedor no encontrado" };
+  // F16: this ignored searchParams entirely, so /vendedor/x?page=2 was
+  // INDEXABLE with a canonical claiming to be page 1.
+  const { page } = pageOnly(parseVentaQuery(await searchParams));
   const title = seller.name.length > 42 ? `${seller.name.slice(0, 41).trimEnd()}…` : seller.name;
-  const path = sellerPath(seller.slug);
+  const path = paginatedCanonical(sellerPath(seller.slug), page);
   const description = (
     `Camiones y vehículos de trabajo de ${seller.name}` +
     `${seller.cityName ? ` en ${seller.cityName}` : ""}. Mirá su stock y consultá por WhatsApp.`
@@ -36,6 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title,
     description,
     alternates: { canonical: path },
+    robots: { index: page === 1, follow: true },
     openGraph: {
       title: `${title} | camiones.com.py`,
       description,
@@ -51,18 +59,18 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const seller = await getSellerBySlug(slug);
   if (!seller) notFound();
 
-  const q = parseVentaQuery(sp);
+  // Only ?page matters here — venta filters aren't applied to a seller's stock.
+  const q = pageOnly(parseVentaQuery(sp));
   const [total, cards] = await Promise.all([
     countListings({ sellerId: seller.id }),
     getListingCards({ sellerId: seller.id }, q.page),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
-  const phoneDigits = waNumber(seller.phoneWhatsapp);
-  const phoneText = seller.phoneDisplay ?? `+${phoneDigits}`;
-  const waHref = waLink(
+  const contact = contactChannels(
     seller.phoneWhatsapp,
-    `Hola, vi su página en camiones.com.py y quiero consultar por su stock`,
+    seller.phoneDisplay,
+    "Hola, vi su página en camiones.com.py y quiero consultar por su stock",
   );
   const logo = imageUrl(seller.logoR2Key);
 
@@ -97,23 +105,29 @@ export default async function SellerPage({ params, searchParams }: Props) {
             </p>
           </div>
         </div>
-        <div className="mt-4 flex gap-2.5 sm:mt-0">
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-12 items-center gap-2 rounded-lg bg-wa px-5 font-heading font-bold text-white transition-colors hover:bg-wa-dark"
-          >
-            <WhatsAppIcon className="h-5 w-5" />
-            Escribinos
-          </a>
-          <a
-            href={`tel:+${phoneDigits}`}
-            className="flex h-12 items-center rounded-lg border border-charcoal-950/20 px-5 font-heading font-bold text-ink hover:border-charcoal-950"
-          >
-            {phoneText}
-          </a>
-        </div>
+        {/* F6: no usable number → no dead buttons; the listings themselves
+            carry the contact form. */}
+        {contact.wa && (
+          <div className="mt-4 flex gap-2.5 sm:mt-0">
+            <a
+              href={contact.wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 items-center gap-2 rounded-lg bg-wa px-5 font-heading font-bold text-white transition-colors hover:bg-wa-dark"
+            >
+              <WhatsAppIcon className="h-5 w-5" />
+              Escribinos
+            </a>
+            {contact.tel && (
+              <a
+                href={contact.tel}
+                className="flex h-12 items-center rounded-lg border border-charcoal-950/20 px-5 font-heading font-bold text-ink hover:border-charcoal-950"
+              >
+                {contact.phoneText}
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       {seller.description && (

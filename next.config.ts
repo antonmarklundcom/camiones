@@ -11,6 +11,13 @@ const nextConfig: NextConfig = {
   },
   // Shared-hosting friendly: standalone output keeps the deployed footprint small.
   output: "standalone",
+  experimental: {
+    // F10: Next's default server-action body cap is 1 MB, which silently
+    // rejected normal phone photos (2–6 MB) BEFORE our own 12 MB check ran.
+    // 15 MB leaves headroom for a multi-photo upload; every upload path caps
+    // and MIME-checks each file itself (src/lib/admin/images.ts, uploads.ts).
+    serverActions: { bodySizeLimit: "15mb" },
+  },
 };
 
 export default nextConfig;

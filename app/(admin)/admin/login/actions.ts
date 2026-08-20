@@ -6,6 +6,8 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { verifyPassword } from "@/lib/auth/password";
 import { getSession } from "@/lib/auth/session";
+import { clientIp } from "@/lib/client-ip";
+import { loginLimiter } from "@/lib/rate-limit";
 
 export interface LoginState {
   error?: string;
@@ -27,6 +29,12 @@ export async function login(
   const invalid: LoginState = { error: "Email o contraseña incorrectos." };
   if (!parsed.success) return invalid;
 
+  // F9: the enumeration defence below is good, but it was unlimited-attempt.
+  const ip = await clientIp();
+  if (!loginLimiter.check(`login:${ip}`).ok) {
+    return { error: "Demasiados intentos. Esperá unos minutos y probá de nuevo." };
+  }
+
   const [user] = await db
     .select()
     .from(users)
@@ -41,7 +49,7 @@ export async function login(
   session.user = {
     id: user.id,
     name: user.name,
-    email: user.email!,
+    email: user.email,
     role: user.role,
     sellerId: user.sellerId ?? null,
   };

@@ -2,14 +2,20 @@ import { waLink, WA_GENERIC_TEXT } from "@/lib/whatsapp";
 import { WhatsAppIcon } from "@/components/WhatsAppIcon";
 
 /**
- * Floating WhatsApp button — on EVERY page (Paraguay conversion rule).
+ * Floating WhatsApp button — on EVERY page (Paraguay conversion rule), as long
+ * as a real site number exists. With NEXT_PUBLIC_DEFAULT_WHATSAPP unset (or
+ * still the placeholder) the button renders nothing rather than linking to
+ * WhatsApp's error page (F6).
  * The .wa-float class lets the detail page's sticky CTA bar push it up on
  * mobile so the two never overlap.
  */
 export function WhatsAppFloat() {
+  const href = waLink(null, WA_GENERIC_TEXT);
+  if (!href) return null;
+
   return (
     <a
-      href={waLink(null, WA_GENERIC_TEXT)}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Escribinos por WhatsApp"

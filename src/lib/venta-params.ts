@@ -6,6 +6,7 @@
  * /venta/camiones/scania/asuncion/usados works, /venta/scania/usados works,
  * and /venta/usados/scania 404s (order violated).
  */
+import { cache } from "react";
 import type { Condition, Traction, Transmission } from "@/db/schema";
 import { TRACTION_VALUES, TRANSMISSION_VALUES } from "@/db/schema";
 import { getCities, getPublishedBrands, type ListingFilters } from "@/lib/queries";
@@ -21,9 +22,19 @@ export interface ResolvedVenta {
   cities: { id: number; name: string; slug: string }[];
 }
 
-export async function resolveSegments(
+/**
+ * Cached by the JOINED path, not the array: `generateMetadata` and the page
+ * body both resolve the same URL, and React.cache only dedupes on referential
+ * argument equality — two equal arrays are not equal (F13).
+ */
+export const resolveSegments = (
   segments: string[],
+): Promise<ResolvedVenta | null> => resolveSegmentPath(segments.join("/"));
+
+const resolveSegmentPath = cache(async function resolveSegmentPath(
+  path: string,
 ): Promise<ResolvedVenta | null> {
+  const segments = path ? path.split("/") : [];
   const [brandRows, cityRows] = await Promise.all([
     getPublishedBrands(),
     getCities(),
@@ -65,7 +76,7 @@ export async function resolveSegments(
   }
 
   return { selection: sel, brands: brandRows, cities: cityRows };
-}
+});
 
 /* --------------------------- query-param filters -------------------------- */
 
@@ -143,6 +154,16 @@ export function toFilters(
     transmission: q.transmission,
     traction: q.traction,
   };
+}
+
+/**
+ * Drop every filter, keep the page (F16). The seller page reuses the venta
+ * query parser for `?page=`, but it does not apply venta filters — echoing
+ * them into its pagination hrefs minted crawlable duplicate URLs whose params
+ * changed nothing on the page.
+ */
+export function pageOnly(q: VentaQuery): VentaQuery {
+  return { page: q.page, hasFilters: false };
 }
 
 /** Re-serialize the ACTIVE query filters (used by pagination links). */

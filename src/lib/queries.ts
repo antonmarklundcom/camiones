@@ -3,6 +3,8 @@
  * server-side on indexed scalar columns (idx_search) — no client-side
  * filtering anywhere.
  */
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { and, asc, count, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -20,6 +22,21 @@ import {
 import type { FinancingProgram } from "@/lib/cuota";
 
 export const PER_PAGE = 12;
+
+/**
+ * F13 — runtime caching. Public pages stay `force-dynamic` (Hostinger can't
+ * reach MySQL at build time, so SSG is off the table), but that never justified
+ * paying 4–7 queries per anonymous view. Two layers:
+ *
+ *  - `unstable_cache` (5 min) for the slow-moving taxonomy reads that every
+ *    page repeats — brands, cities, counts, financing programs. Tagged so a
+ *    future admin mutation can revalidate instead of waiting out the TTL.
+ *  - `React.cache` for per-request dedupe, where `generateMetadata` and the
+ *    page body ask the exact same question (Next dedupes fetch(), not DB calls).
+ */
+const TAXONOMY_TTL = 300;
+export const TAG_TAXONOMY = "taxonomy";
+export const TAG_LISTINGS = "listings";
 
 export interface ListingFilters {
   category?: Category;
@@ -118,35 +135,45 @@ export async function getRecentListings(n: number) {
 
 /* ---------------------------- taxonomy lookups --------------------------- */
 
-export async function getPublishedBrands() {
-  return db
-    .select({ id: brands.id, name: brands.name, slug: brands.slug })
-    .from(brands)
-    .where(eq(brands.status, "published"))
-    .orderBy(asc(brands.name));
-}
+export const getPublishedBrands = unstable_cache(
+  async () =>
+    db
+      .select({ id: brands.id, name: brands.name, slug: brands.slug })
+      .from(brands)
+      .where(eq(brands.status, "published"))
+      .orderBy(asc(brands.name)),
+  ["brands:published"],
+  { revalidate: TAXONOMY_TTL, tags: [TAG_TAXONOMY] },
+);
 
-export async function getCities() {
-  return db
-    .select({ id: locations.id, name: locations.name, slug: locations.slug })
-    .from(locations)
-    .where(and(eq(locations.level, "ciudad"), eq(locations.status, "published")))
-    .orderBy(asc(locations.name));
-}
+export const getCities = unstable_cache(
+  async () =>
+    db
+      .select({ id: locations.id, name: locations.name, slug: locations.slug })
+      .from(locations)
+      .where(and(eq(locations.level, "ciudad"), eq(locations.status, "published")))
+      .orderBy(asc(locations.name)),
+  ["locations:cities"],
+  { revalidate: TAXONOMY_TTL, tags: [TAG_TAXONOMY] },
+);
 
 /** Published-listing count per category — home tiles + sitemap. */
-export async function categoryCounts(): Promise<Record<string, number>> {
+export const categoryCounts = unstable_cache(
+  async (): Promise<Record<string, number>> => {
   const rows = await db
     .select({ category: listings.category, n: count() })
     .from(listings)
     .where(eq(listings.status, "published"))
     .groupBy(listings.category);
   return Object.fromEntries(rows.map((r) => [r.category, r.n]));
-}
+  },
+  ["listings:category-counts"],
+  { revalidate: TAXONOMY_TTL, tags: [TAG_LISTINGS] },
+);
 
 /* ------------------------------ detail page ------------------------------ */
 
-export async function getListingBySlug(slug: string) {
+export const getListingBySlug = cache(async (slug: string) => {
   const [row] = await db
     .select({
       id: listings.id,
@@ -194,10 +221,11 @@ export async function getListingBySlug(slug: string) {
     .orderBy(asc(images.sortOrder));
 
   return { ...row, images: imgs };
-}
+});
 
 /** Active programs for the cuota calculator (placeholder rates until Phase 4). */
-export async function getActivePrograms(): Promise<FinancingProgram[]> {
+export const getActivePrograms = unstable_cache(
+  async (): Promise<FinancingProgram[]> => {
   const rows = await db
     .select()
     .from(financingPrograms)
@@ -216,11 +244,37 @@ export async function getActivePrograms(): Promise<FinancingProgram[]> {
     minDownPct: Number(p.minDownPct),
     active: p.active,
   }));
+  },
+  ["financing:active"],
+  { revalidate: TAXONOMY_TTL, tags: [TAG_TAXONOMY] },
+);
+
+/**
+ * Lead capture (F9): the contact form only sends a publicId; every value that
+ * reaches the CRM is re-read from the DB here, so a forged bound argument can't
+ * inject a title, price or link into our own CRM notes.
+ */
+export async function getListingForLead(publicId: string) {
+  const [row] = await db
+    .select({
+      id: listings.id,
+      publicId: listings.publicId,
+      slug: listings.slug,
+      title: listings.title,
+      priceUsd: listings.priceUsd,
+      sellerId: listings.sellerId,
+      sellerSlug: sellers.slug,
+    })
+    .from(listings)
+    .innerJoin(sellers, eq(listings.sellerId, sellers.id))
+    .where(and(eq(listings.publicId, publicId), eq(listings.status, "published")))
+    .limit(1);
+  return row ?? null;
 }
 
 /* ------------------------------ seller page ------------------------------ */
 
-export async function getSellerBySlug(slug: string) {
+export const getSellerBySlug = cache(async (slug: string) => {
   const [row] = await db
     .select({
       id: sellers.id,
@@ -240,7 +294,7 @@ export async function getSellerBySlug(slug: string) {
     .where(and(eq(sellers.slug, slug), eq(sellers.status, "published")))
     .limit(1);
   return row ?? null;
-}
+});
 
 /* -------------------------------- sitemap -------------------------------- */
 

@@ -1,7 +1,8 @@
 "use server";
 import { z } from "zod";
-import { pushLead } from "@/lib/crm";
-import { absoluteUrl, listingPath } from "@/lib/urls";
+import { captureLead } from "@/lib/leads";
+import { clientIp } from "@/lib/client-ip";
+import { leadLimiter } from "@/lib/rate-limit";
 import type { LeadState } from "@/lib/lead";
 
 const leadSchema = z.object({
@@ -16,16 +17,33 @@ const leadSchema = z.object({
 });
 
 /**
- * Contact-form server action: validates the 3 fields and fires the GHL
- * webhook. Leads are NEVER stored in our DB (PLAN.md) — GHL is the CRM of
- * record; without GHL_WEBHOOK_URL the lead logs to console and still
- * succeeds so a config gap never breaks the form.
+ * Contact-form server action. The lead is written to our DB first and only
+ * then pushed to the CRM (F1), so "¡Gracias!" is only shown once the lead is
+ * actually safe somewhere.
+ *
+ * The bound argument is ONLY the listing's publicId: everything the CRM sees
+ * about the truck is re-read from the DB inside captureLead (F9), because a
+ * bound server-action argument is attacker-forgeable.
  */
 export async function enviarConsulta(
-  listing: { publicId: string; slug: string; title: string; priceUsd: number },
+  listingPublicId: string,
   _prev: LeadState,
   formData: FormData,
 ): Promise<LeadState> {
+  // Honeypot: a real browser leaves this hidden field empty. Answer exactly as
+  // if it worked — a bot that sees an error just fixes its script.
+  if (String(formData.get("empresa") ?? "").trim() !== "") {
+    return { status: "ok" };
+  }
+
+  const ip = await clientIp();
+  if (!leadLimiter.check(`lead:${ip}`).ok) {
+    return {
+      status: "error",
+      message: "Recibimos varias consultas desde tu conexión — probá de nuevo en un rato o escribinos por WhatsApp.",
+    };
+  }
+
   const parsed = leadSchema.safeParse({
     nombre: formData.get("nombre"),
     telefono: formData.get("telefono"),
@@ -38,19 +56,17 @@ export async function enviarConsulta(
     };
   }
 
-  const result = await pushLead({
+  const result = await captureLead({
     name: parsed.data.nombre,
     phone: parsed.data.telefono,
     message: parsed.data.mensaje,
-    listing: {
-      publicId: listing.publicId,
-      title: listing.title,
-      url: absoluteUrl(listingPath(listing.slug)),
-      priceUsd: listing.priceUsd,
-    },
+    listingPublicId,
   });
 
   return result.ok
     ? { status: "ok" }
-    : { status: "error", message: "No pudimos enviar tu consulta — probá de nuevo o escribinos por WhatsApp." };
+    : {
+        status: "error",
+        message: "No pudimos enviar tu consulta — probá de nuevo o escribinos por WhatsApp.",
+      };
 }

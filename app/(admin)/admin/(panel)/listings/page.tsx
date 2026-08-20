@@ -4,6 +4,7 @@ import { listAdminListings } from "@/lib/admin/queries";
 import { formatUsd } from "@/lib/format";
 import { ListingStatusBadge } from "@/components/admin/StatusBadge";
 import { ConfirmSubmit } from "@/components/admin/ui";
+import { canTransition } from "@/lib/admin/constants";
 import { changeStatusAction, deleteListingAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +93,8 @@ export default async function ListingsPage({
                       >
                         Editar
                       </Link>
+                      {/* F27: a sold/removed listing can't jump straight back
+                          to published — it goes through borrador first. */}
                       {r.status === "published" ? (
                         <form action={changeStatusAction}>
                           <input type="hidden" name="id" value={r.id} />
@@ -103,7 +106,7 @@ export default async function ListingsPage({
                             Pausar
                           </button>
                         </form>
-                      ) : (
+                      ) : canTransition(r.status, "published") ? (
                         <form action={changeStatusAction}>
                           <input type="hidden" name="id" value={r.id} />
                           <input type="hidden" name="status" value="published" />
@@ -112,6 +115,17 @@ export default async function ListingsPage({
                             className="rounded-md bg-green-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-green-700"
                           >
                             Publicar
+                          </button>
+                        </form>
+                      ) : (
+                        <form action={changeStatusAction}>
+                          <input type="hidden" name="id" value={r.id} />
+                          <input type="hidden" name="status" value="draft" />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-charcoal-100 px-2.5 py-1 text-xs font-medium text-ink hover:bg-charcoal-100"
+                          >
+                            Pasar a borrador
                           </button>
                         </form>
                       )}

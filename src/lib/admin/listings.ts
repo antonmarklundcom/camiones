@@ -20,6 +20,8 @@ import type { SessionUser } from "@/lib/auth/session";
 import { assertCanManageSeller, resolveOwningSeller } from "@/lib/auth/guard";
 
 import {
+  canTransition,
+  LISTING_STATUS_LABELS,
   LISTING_STATUS_VALUES,
   type ListingStatus,
 } from "@/lib/admin/constants";
@@ -27,8 +29,31 @@ import {
 export {
   LISTING_STATUS_VALUES,
   LISTING_STATUS_LABELS,
+  LISTING_STATUS_TRANSITIONS,
+  canTransition,
   type ListingStatus,
 } from "@/lib/admin/constants";
+
+/** F27: shared guard for both write paths. */
+function assertTransition(from: ListingStatus, to: ListingStatus): void {
+  if (canTransition(from, to)) return;
+  throw new Error(
+    `No se puede pasar de "${LISTING_STATUS_LABELS[from]}" a "${LISTING_STATUS_LABELS[to]}". Pasalo a borrador primero.`,
+  );
+}
+
+/**
+ * F27: `featured` is home-page placement, i.e. inventory that will be sold as
+ * a paid upsell (PLAN.md Decisions Log). Dealers must not be able to grant it
+ * to themselves, so their value is ignored and the stored one preserved.
+ */
+function resolveFeatured(
+  user: SessionUser,
+  requested: boolean,
+  current: boolean,
+): boolean {
+  return user.role === "admin" ? requested : current;
+}
 
 const USD_TO_PYG = Number(process.env.USD_TO_PYG ?? 7300);
 
@@ -168,7 +193,7 @@ export async function createListing(
     description: input.description || null,
     locationId: input.locationId,
     sellerId,
-    featured: input.featured,
+    featured: resolveFeatured(user, input.featured, false),
     status: input.status,
     publishedAt: publishing ? new Date() : null,
     updatedBy: user.id,
@@ -193,6 +218,7 @@ export async function updateListing(
       sellerId: listings.sellerId,
       status: listings.status,
       publishedAt: listings.publishedAt,
+      featured: listings.featured,
     })
     .from(listings)
     .where(eq(listings.id, id))
@@ -203,6 +229,8 @@ export async function updateListing(
   // Dealers can't reassign a listing to another seller; admins may.
   const sellerId =
     user.role === "admin" && input.sellerId ? input.sellerId : current.sellerId;
+
+  assertTransition(current.status, input.status);
 
   const name = await brandName(input.brandId);
   const title = `${name} ${input.model} ${input.year}`;
@@ -230,7 +258,7 @@ export async function updateListing(
       description: input.description || null,
       locationId: input.locationId,
       sellerId,
-      featured: input.featured,
+      featured: resolveFeatured(user, input.featured, current.featured),
       status: input.status,
       publishedAt: becomingPublished ? new Date() : current.publishedAt,
       updatedBy: user.id,
@@ -245,12 +273,17 @@ export async function setListingStatus(
   status: ListingStatus,
 ): Promise<void> {
   const [current] = await db
-    .select({ sellerId: listings.sellerId, publishedAt: listings.publishedAt })
+    .select({
+      sellerId: listings.sellerId,
+      status: listings.status,
+      publishedAt: listings.publishedAt,
+    })
     .from(listings)
     .where(eq(listings.id, id))
     .limit(1);
   if (!current) throw new Error("El aviso no existe.");
   assertCanManageSeller(user, current.sellerId);
+  assertTransition(current.status, status);
 
   const becomingPublished = status === "published" && current.publishedAt == null;
   await db

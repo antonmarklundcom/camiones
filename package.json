@@ -25,6 +25,7 @@
     "seed:admin": "tsx scripts/seed-admin.ts",
     "import:csv": "tsx scripts/import-csv.ts",
     "cron:cuotas": "tsx scripts/recompute-cuotas.ts",
+    "cron:leads": "tsx scripts/retry-leads.ts",
     "content:guides": "tsx scripts/generate-guides.ts",
     "placeholders": "tsx scripts/generate-placeholders.ts",
     "prepare": "husky || true"

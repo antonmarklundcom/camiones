@@ -5,7 +5,7 @@
 > STATUS line below, and commits it. Next session starts by reading this file — no
 > re-discovery from zero.
 >
-> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 — Batch 0 DONE, Batch 1 next` — last updated 2026-08-20**
+> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 — Batches 0+1 DONE, Batch 2 next` — last updated 2026-08-20**
 > Remaining Phase 4 items are blocked on real data (dealer inventory, verified financing rates) — see Phase 4.
 > **Next work = Phase 6** (batches 0–7 below), driven by `docs/audit-camiones.md` + the Decisions Log.
 > Read `CLAUDE.md` first in every session.
@@ -211,7 +211,30 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
       > **Still on Anton (hPanel/GitHub UI, not code):** enable branch protection on
       > `main` with NO required status check + auto-merge; keep Actions disabled and
       > the billing spending limit at $0.
-- [ ] **Batch 1 — independent fixes** (one small PR each, parallel): leads write-ahead table + GHL retry (F1), contact-CTA hide/fallback when no phone (F6), session revalidation (F8), rate limit + honeypot (F9), serverActions bodySizeLimit + logo/hero caps (F10), runtime caching (F13), filter indexes (F14), pagination canonicals (F15/F16), users NOT NULL + dealer scope fail-closed (F20), seed-admin `--rotate` guard (F21), slug-namespace uniqueness (F24), status-transition rules + admin-only `featured` (F27).
+- [x] **Batch 1 — independent fixes** ✅ 2026-08-20 (one small PR each, parallel): leads write-ahead table + GHL retry (F1), contact-CTA hide/fallback when no phone (F6), session revalidation (F8), rate limit + honeypot (F9), serverActions bodySizeLimit + logo/hero caps (F10), runtime caching (F13), filter indexes (F14), pagination canonicals (F15/F16), users NOT NULL + dealer scope fail-closed (F20), seed-admin `--rotate` guard (F21), slug-namespace uniqueness (F24), status-transition rules + admin-only `featured` (F27).
+      > **As built** (one branch, not 12 PRs — same content, fewer rebases):
+      > F1 `leads` table + `captureLead()` write-ahead → GHL with an 8 s timeout
+      > and `npm run cron:leads` re-delivery; F6 `contactChannels()` returns null
+      > and every WhatsApp/tel CTA hides (placeholder number rejected), the form
+      > is the fallback; F8 `requireUser()` re-reads the user row per request
+      > (React.cache); F9 honeypot + per-IP sliding-window limiter on the lead
+      > and login actions + CRM payload rebuilt from the DB by publicId; F10
+      > `serverActions.bodySizeLimit: 15mb` + shared `assertUploadable()` on
+      > photos/logos/heroes; F13 `unstable_cache` (300 s) on taxonomy/programs/
+      > counts + `React.cache` on listing/seller/segment resolution; F14 three
+      > `(status, facet, published_at)` indexes; F15/F16 self-canonical `?page=N`
+      > + noindex from page 2, seller metadata finally reads searchParams and its
+      > pagination drops venta filter params; F20 users NOT NULL + dealer-without-
+      > seller scope fails closed (`1 = 0`); F21 seed:admin refuses to overwrite
+      > without `--rotate`; F24 `segment-namespace.ts` guard wired into the brand
+      > and location seeds; F27 status-transition table + admin-only `featured`,
+      > mirrored in the admin forms and list-view buttons.
+      > Migration `drizzle/0002_*.sql` — read its header before running it on an
+      > existing DB (the users NOT NULL step needs a backfill check).
+      > Tests: 94 (added whatsapp, rate-limit, segment-namespace, status
+      > transitions, indexability). No live DB in this session, so the migration
+      > and the admin flows still need one pass against real MySQL at deploy.
+
 - [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
 - [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).

@@ -7,6 +7,7 @@
 import { db } from "../src/db";
 import { brands } from "../src/db/schema";
 import { slugify } from "../src/lib/slug";
+import { assertSegmentFree } from "../src/lib/segment-registry";
 
 const BRAND_NAMES = [
   "Mercedes-Benz",
@@ -29,6 +30,9 @@ async function main() {
   const now = new Date();
   for (const name of BRAND_NAMES) {
     const slug = slugify(name);
+    // F24: /venta/{slug} is one namespace — a brand that collides with a city
+    // or a category slug would silently make the other unreachable.
+    await assertSegmentFree(slug, "marca");
     await db
       .insert(brands)
       .values({ name, slug, status: "published", publishedAt: now })

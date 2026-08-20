@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../src/db";
 import { locations } from "../src/db/schema";
 import { joinSlug, slugify } from "../src/lib/slug";
+import { assertCitySegmentFree } from "../src/lib/segment-registry";
 
 type Level = "pais" | "departamento" | "ciudad";
 
@@ -86,6 +87,11 @@ async function insertNode(
   const slug = slugify(node.name);
   const fullSlug = joinSlug(parentFullSlug, slug);
   const now = new Date();
+
+  // F24: only ciudad slugs become /venta segments; a city colliding with a
+  // brand (or another city) would be unreachable behind the resolver's
+  // precedence order.
+  if (node.level === "ciudad") await assertCitySegmentFree(slug, fullSlug);
 
   await db
     .insert(locations)

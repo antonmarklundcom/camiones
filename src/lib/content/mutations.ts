@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { contentPages, CATEGORY_VALUES, CONTENT_KIND_VALUES } from "@/db/schema";
 import { slugify } from "@/lib/slug";
 import { uploadToR2 } from "@/lib/r2";
+import { assertUploadable, MAX_SINGLE_IMAGE_BYTES } from "@/lib/admin/uploads";
 import { excerptFromMarkdown } from "@/lib/content/markdown";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -158,6 +159,7 @@ export async function setContentHero(
     .where(eq(contentPages.id, id))
     .limit(1);
   if (!current) throw new Error("La página no existe.");
+  assertUploadable(file, MAX_SINGLE_IMAGE_BYTES); // F10
 
   const sharp = (await import("sharp")).default;
   const webp = await sharp(Buffer.from(await file.arrayBuffer()))
