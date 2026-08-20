@@ -9,6 +9,7 @@ import {
   parseSellerForm,
   setSellerLogo,
   removeSellerLogo,
+  setSellerVerified,
 } from "@/lib/admin/sellers";
 
 export interface SellerFormState {
@@ -80,6 +81,29 @@ export async function deleteSellerAction(formData: FormData): Promise<void> {
   }
   revalidatePath("/admin/sellers");
   redirect("/admin/sellers?borrado=1");
+}
+
+/* ------------------------------- verification ------------------------------ */
+
+/**
+ * I6 — toggle a seller's verified badge. Admin-only, enforced twice: once here
+ * and once in setSellerVerified(), because every server action self-guards.
+ */
+export async function toggleSellerVerifiedAction(formData: FormData): Promise<void> {
+  const user = await requireAdmin();
+  const id = Number(formData.get("id"));
+  const verified = formData.get("verified") === "1";
+  if (!id) return;
+  try {
+    await setSellerVerified(user, id, verified, String(formData.get("note") ?? ""));
+  } catch (e) {
+    redirect(
+      `/admin/sellers/${id}?error=${encodeURIComponent(e instanceof Error ? e.message : "error")}`,
+    );
+  }
+  revalidatePath("/admin/sellers");
+  revalidatePath(`/admin/sellers/${id}`);
+  redirect(`/admin/sellers/${id}?guardado=1`);
 }
 
 /* ---------------------------------- logo ---------------------------------- */

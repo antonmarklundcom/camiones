@@ -10,7 +10,8 @@ export default function robots(): MetadataRoute.Robots {
         // /buscar is the form-redirect endpoint — never a destination.
         // /admin is the private panel (also noindexed via its own layout).
         // /api is machine-only (the guarded cron route lives there).
-        disallow: ["/buscar", "/admin", "/api"],
+        // /wa is the tracked WhatsApp hop — a redirect, never a destination.
+        disallow: ["/buscar", "/admin", "/api", "/wa"],
       },
     ],
     sitemap: `${siteOrigin()}/sitemap.xml`,

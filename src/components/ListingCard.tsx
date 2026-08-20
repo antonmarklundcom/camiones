@@ -6,6 +6,7 @@ import { TRANSMISSION_LABELS, conditionLabel } from "@/lib/taxonomy";
 import { imageUrl } from "@/lib/r2";
 import { listingPath } from "@/lib/urls";
 import { FEATURE_FINANCING } from "@/lib/flags";
+import { FreshnessBadge, PriceDropBadge, VerifiedBadge } from "@/components/Badges";
 import { DEFAULT_TERM_MONTHS } from "@/lib/cuota";
 
 const CUOTA_DEFAULT_LABEL = `Cuota estimada a ${DEFAULT_TERM_MONTHS} meses con entrega inicial mínima`;
@@ -47,6 +48,12 @@ export function ListingCard({
         <span className="absolute left-3 top-3 rounded bg-charcoal-950/80 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
           {conditionLabel(listing.condition)}
         </span>
+        <PriceDropBadge
+          priceUsd={listing.priceUsd}
+          priceUsdPrev={listing.priceUsdPrev}
+          priceChangedAt={listing.priceChangedAt}
+          className="absolute right-3 top-3 shadow-sm"
+        />
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 p-4">
@@ -56,6 +63,10 @@ export function ListingCard({
         <h3 className="line-clamp-2 font-heading text-base font-semibold leading-snug text-ink">
           {listing.title}
         </h3>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <FreshnessBadge publishedAt={listing.publishedAt} />
+          <VerifiedBadge verifiedAt={listing.sellerVerifiedAt} />
+        </div>
         <p className="flex flex-wrap gap-x-1.5 text-sm text-ink-soft">
           <span>{listing.year}</span>
           <span aria-hidden="true">·</span>

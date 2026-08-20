@@ -21,6 +21,7 @@ headers. `job` puede ser:
 | `all` (por defecto) | Todo lo de abajo |
 | `cuotas` | Recalcula `price_gs` (US$ × cotización vigente) y `cuota_gs` |
 | `leads` | Barrido de reintento de leads — **hoy es un no-op**, ver abajo |
+| `analytics` | Consolida `analytics_events` → `analytics_daily` y purga eventos crudos de más de 90 días |
 
 Respuestas:
 
@@ -57,10 +58,16 @@ Una corrida diaria alcanza: la cotización la cargás a mano en
 `/admin/cotizacion`, y esa pantalla ya recalcula todo en el momento. El cron es
 la red de seguridad, no el camino principal.
 
+Para las estadísticas sí es el camino principal: `/admin/analytics` lee sólo la
+tabla consolidada, así que **sin el cron el panel se queda vacío**. Corré
+`job=all` una vez por día y listo.
+
 ## Correrlo a mano
 
 ```
-npm run cron:cuotas
+npm run cron:cuotas               # dinero (precios en ₲ + cuotas)
+npm run analytics:rollup          # estadísticas, últimos 2 días
+npm run analytics:rollup -- 30    # reconsolidar 30 días
 ```
 
 Es un CLI finito sobre `recomputeMoney()` (`src/lib/jobs/money.ts`) — la misma

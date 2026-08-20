@@ -27,8 +27,9 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   ADMIN_PASSWORD, and it announces any role promotion (F21 fixed).
 - `npm run import:csv -- <file.csv> <seller-slug> [--dry-run] [--publish] [--create-seller]`
   (contract: `data/ejemplo-inventario.csv` + `data/README-import.md`). ALWAYS `--dry-run` first.
-- `npm run cron:cuotas` (same function as `GET /api/cron?job=cuotas` — see
-  `docs/cron.md`), `npm run content:guides` (Anthropic batch → drafts only)
+- `npm run cron:cuotas` (= `GET /api/cron?job=cuotas`), `npm run analytics:rollup`
+  (= `job=analytics`) — see `docs/cron.md`; `npm run content:guides`
+  (Anthropic batch → drafts only)
 - tsx does NOT auto-load `.env` — set `DATABASE_URL` in the shell for scripts.
 
 ## Architecture map
@@ -37,8 +38,15 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `/camion/[slug]`, `/vendedor/[slug]`, `/guias`, `/buscar` (no-JS GET → 302 to
   canonical segment URL, robots-disallowed).
 - `app/(admin)/admin/` panel; `login/` sits outside the auth-gated `(panel)` group.
+- `app/(site)/wa/[publicId]` tracked WhatsApp hop (I8) — logs the click, then
+  302s to a `wa.me` link built server-side from the DB. NEVER take the redirect
+  target from the query string; that would be an open redirect on a listings site.
 - `src/lib/import/` the CSV importer's plan/commit engine (see traps below).
-- `src/lib/jobs/money.ts` the scheduled money work, shared by `/api/cron` and the CLI.
+- `src/lib/jobs/money.ts` + `src/lib/jobs/analytics.ts` the scheduled work, shared
+  by `/api/cron` and the CLIs.
+- `src/lib/analytics/` first-party event recording (`record.ts` buffered writer,
+  `request.ts` header handling, `queries.ts` admin reads).
+- `src/lib/sort.ts` + `src/lib/freshness.ts` sort controls and the card badges.
 - `src/lib/fx.ts` the DB FX rate; `src/lib/flags.ts` feature flags (Batch 4 folds these into `site.config.ts`).
 - `src/lib/` engine logic: `queries.ts` (all public reads), `venta-params.ts`
   (segment-URL resolution — category/brand/city/condition share one namespace by
@@ -47,10 +55,12 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - `src/lib/auth/`: iron-session + bcryptjs (NOT native bcrypt — Hostinger can't
   compile addons). Every server action self-guards (`requireUser`/`requireAdmin`,
   `assertCanManageSeller`); dealers scoped to their `sellerId`.
-- `src/db/schema.ts`: 11 tables. Roles: `admin | dealer` (staff planned, Batch 4).
+- `src/db/schema.ts`: 13 tables. Roles: `admin | dealer` (staff planned, Batch 4).
   `import_jobs`/`import_rows` are the import journal (Batch 2, `drizzle/0003_*`);
   `listings.external_id` is the dealer's own chapa/stock ID; `fx_rates` +
-  `financing_programs.rate_convention` are Batch 3 (`drizzle/0004_*`).
+  `financing_programs.rate_convention` are Batch 3 (`drizzle/0004_*`);
+  `analytics_events`/`analytics_daily`, `sellers.verified_at` and
+  `listings.price_usd_prev`/`price_changed_at` are Batch 5 (`drizzle/0005_*`).
 - Uploads re-encode to WebP via sharp at ingest (long edge ≤1600, q80).
 
 ## Deliberate non-features & traps (do not "fix" casually)
@@ -134,6 +144,27 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - **Public pages are `force-dynamic` with zero caching** (F13) — deliberate at
   build time (Hostinger can't reach DB during build); the runtime-caching fix is
   still OPEN (see PLAN.md Batch 1 remainder).
+- **Analytics are first-party ONLY** — no Google, no Plausible, no third-party
+  script, ever (locked decision + zero extra JS on prepaid data). `recordEvent()`
+  never blocks a response: it buffers and flushes as one multi-row INSERT.
+  Nothing reads `analytics_events` per request — `/admin/analytics` reads the
+  nightly `analytics_daily` rollup, so **without the cron the panel is empty**.
+  Only `/camion` and `/vendedor` record page views; `/venta` is deliberately
+  unmeasured. Details + the privacy model in `docs/analytics.md`.
+  A process restart can drop up to 25 buffered events — fine for view counts,
+  NOT fine for leads. The `lead` event is a COUNTER; the write-ahead `leads`
+  table (F1, Batch 1) is still what stops a lead being lost.
+- **Price-drop badge reads `price_usd_prev`/`price_changed_at`** (I5), written by
+  the importer and by admin edits only when the US$ price actually moves. The FX
+  recompute touches `price_gs` alone, so a guaraní swing can never fake a drop.
+- **Sort controls are URL-driven, zero JS** (`?orden=`, `src/lib/sort.ts`). A
+  non-default order counts as a FILTER: noindex,follow + canonical back to the
+  clean segment URL, and the links carry `rel="nofollow"`. `featured DESC` leads
+  the ORDER BY only on the default view — an explicit "precio: menor a mayor"
+  must return the cheapest truck, not the cheapest featured one.
+- **"Vendedores verificados" is now backed** by `sellers.verified_at` (I6/F18) —
+  manual, admin-only, set from `/admin/sellers/[id]`. The badge renders from that
+  column alone. Don't reintroduce an unbacked trust claim.
 - Demo Dealer sample data is honest: no phone, "aviso de demostración" text.
 - Slugs/public_ids are stable — NEVER recompute on edit (inbound links + SEO).
 
@@ -164,8 +195,8 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `uploads.ts`, `listing-policy.ts`, `venta-namespace.ts` and the import
   planner (`import-identity` / `import-merge` / `import-plan`) — the pure
   functions where a silent regression misquotes money, breaks canonical URLs
-  or duplicates a dealer's inventory — plus `cuota-defaults` / `fx` for the
-  Batch 3 money rules.
+  or duplicates a dealer's inventory — plus `cuota-defaults` / `fx` (Batch 3
+  money) and `sort` / `freshness` / `analytics` (Batch 5).
   Keep the suite sub-second so the hook stays tolerable. No Playwright.
 - `<img>` on R2 photos is deliberate (pass-through loader, prepaid-data budget) —
   keep the per-site `eslint-disable-next-line @next/next/no-img-element` comments.

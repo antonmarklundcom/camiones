@@ -102,6 +102,36 @@ export async function createSeller(input: SellerInput): Promise<number> {
   return row.id;
 }
 
+/**
+ * I6/F18 — mark a seller verified (or clear it). Admin-only and deliberately
+ * manual: the Decisions Log says a human checks RUC + WhatsApp ownership, with
+ * no automated flow. The badge on cards and detail pages renders from this
+ * column alone, which is what finally makes the home page's "vendedores
+ * verificados" claim true rather than decorative.
+ */
+export async function setSellerVerified(
+  user: SessionUser,
+  id: number,
+  verified: boolean,
+  note?: string | null,
+): Promise<void> {
+  if (user.role !== "admin") {
+    throw new Error("Solo un administrador puede verificar concesionarias.");
+  }
+  await db
+    .update(sellers)
+    .set(
+      verified
+        ? {
+            verifiedAt: new Date(),
+            verifiedBy: user.id,
+            verifiedNote: note?.slice(0, 255) || null,
+          }
+        : { verifiedAt: null, verifiedBy: null, verifiedNote: null },
+    )
+    .where(eq(sellers.id, id));
+}
+
 export async function updateSeller(
   user: SessionUser,
   id: number,

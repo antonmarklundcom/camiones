@@ -15,11 +15,13 @@ import {
   decimal,
   index,
   int,
+  date,
   mysqlEnum,
   mysqlTable,
   smallint,
   text,
   tinyint,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
@@ -79,6 +81,14 @@ export const listings = mysqlTable(
 
     priceUsd: decimal("price_usd", { precision: 12, scale: 2 }).notNull(),
     priceGs: decimal("price_gs", { precision: 14, scale: 0 }).notNull(),
+    /**
+     * I5 — the previous US$ price and when it changed, so a card can say
+     * "precio bajó". Written by the importer and by admin edits whenever
+     * price_usd actually moves. NOT touched by the FX recompute: that only
+     * re-derives price_gs, so a guaraní move can never fake a price drop.
+     */
+    priceUsdPrev: decimal("price_usd_prev", { precision: 12, scale: 2 }),
+    priceChangedAt: datetime("price_changed_at"),
     // Cached monthly payment, recomputed by scripts/recompute-cuotas.ts.
     cuotaGs: decimal("cuota_gs", { precision: 14, scale: 0 }),
 
@@ -155,6 +165,9 @@ export const listings = mysqlTable(
     index("idx_km").on(t.status, t.km),
     index("idx_transmission").on(t.status, t.transmission),
     index("idx_traction").on(t.status, t.traction),
+    // Sort controls (I5): ORDER BY price_usd / year / km with only the status
+    // filter applied can't use idx_search, whose leading columns are facets.
+    index("idx_price_sort").on(t.status, t.priceUsd),
     // Import anchor lookups (seller + dealer's own ID) during planImport().
     index("idx_external").on(t.sellerId, t.externalId),
   ],
@@ -227,6 +240,15 @@ export const sellers = mysqlTable(
     locationId: fk("location_id"),
     description: text("description"),
     logoR2Key: varchar("logo_r2_key", { length: 500 }),
+    /**
+     * I6/F18 — when a human verified this seller (RUC + WhatsApp ownership).
+     * NULL = not verified. The home trust strip claims "vendedores
+     * verificados"; this column is what finally makes that claim true, and the
+     * badge renders from it, never from a hardcoded assumption.
+     */
+    verifiedAt: datetime("verified_at"),
+    verifiedBy: fk("verified_by"), // users.id
+    verifiedNote: varchar("verified_note", { length: 255 }),
     status: mysqlEnum("status", ["draft", "published"])
       .notNull()
       .default("published"),
@@ -434,4 +456,68 @@ export const fxRates = mysqlTable(
     createdBy: fk("created_by"), // users.id; NULL when set by a script/cron
   },
   (t) => [index("idx_fx_active").on(t.base, t.quote, t.active, t.createdAt)],
+);
+
+/* ------------------------------------------------------------------ */
+/* First-party analytics (I8 + Decisions Log: no third-party scripts)  */
+/* ------------------------------------------------------------------ */
+
+export const EVENT_KIND_VALUES = ["page_view", "wa_click", "lead"] as const;
+export type EventKind = (typeof EVENT_KIND_VALUES)[number];
+
+/**
+ * Raw event log. No Google, no Plausible, no third-party script — that is a
+ * locked decision, and it also means zero extra JS on a prepaid-data Android.
+ *
+ * Deliberately narrow: no cookies, no user id, no full IP. `visitor_hash` is a
+ * daily-rotating hash of IP + user-agent used ONLY to collapse a refresh
+ * frenzy into one visit; it is not stable across days and identifies nobody.
+ *
+ * Rows are written in batches by src/lib/analytics/record.ts and rolled up
+ * nightly into analytics_daily, which is what the admin dashboard reads —
+ * this table is append-only and never queried per-request.
+ */
+export const analyticsEvents = mysqlTable(
+  "analytics_events",
+  {
+    id: id(),
+    kind: mysqlEnum("kind", EVENT_KIND_VALUES).notNull(),
+    listingId: fk("listing_id"),
+    sellerId: fk("seller_id"),
+    path: varchar("path", { length: 255 }),
+    // Referrer HOST only ("google.com"), never the full URL.
+    referrerHost: varchar("referrer_host", { length: 120 }),
+    visitorHash: char("visitor_hash", { length: 32 }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("idx_ev_rollup").on(t.createdAt, t.kind),
+    index("idx_ev_listing").on(t.listingId, t.createdAt),
+    index("idx_ev_seller").on(t.sellerId, t.createdAt),
+  ],
+);
+
+/**
+ * Nightly rollup — one row per day/kind/listing. The dashboard only ever reads
+ * this, so a dealer opening their stats costs a handful of indexed rows
+ * instead of a scan over months of raw events on shared MySQL.
+ */
+export const analyticsDaily = mysqlTable(
+  "analytics_daily",
+  {
+    id: id(),
+    day: date("day").notNull(),
+    kind: mysqlEnum("kind", EVENT_KIND_VALUES).notNull(),
+    listingId: fk("listing_id"),
+    sellerId: fk("seller_id"),
+    events: int("events", { unsigned: true }).notNull().default(0),
+    visitors: int("visitors", { unsigned: true }).notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // One row per (day, kind, listing) — the rollup upserts on this.
+    uniqueIndex("uq_daily").on(t.day, t.kind, t.listingId, t.sellerId),
+    index("idx_daily_seller").on(t.sellerId, t.day),
+    index("idx_daily_listing").on(t.listingId, t.day),
+  ],
 );

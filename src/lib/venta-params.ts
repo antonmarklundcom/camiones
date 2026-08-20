@@ -10,6 +10,7 @@ import type { Condition, Traction, Transmission } from "@/db/schema";
 import { TRACTION_VALUES, TRANSMISSION_VALUES } from "@/db/schema";
 import { getCities, getPublishedBrands, type ListingFilters } from "@/lib/queries";
 import { categoryBySlug, CONDITION_SEGMENTS } from "@/lib/taxonomy";
+import { DEFAULT_SORT, parseSort, sortParam, type Sort } from "@/lib/sort";
 import type { VentaSelection } from "@/lib/urls";
 
 export interface ResolvedVenta {
@@ -77,8 +78,15 @@ export interface VentaQuery {
   kmMax?: number;
   transmission?: Transmission;
   traction?: Traction;
+  /** I5 — sort controls. Default order is never serialised into the URL. */
+  sort: Sort;
   page: number;
-  /** true when any FILTER param is present (drives noindex + canonical). */
+  /**
+   * true when any FILTER param is present (drives noindex + canonical).
+   * A non-default `?orden=` counts: a reordering is a duplicate slice of the
+   * same segment page, so it gets the same noindex,follow + canonical-back
+   * treatment as `?price_max=`.
+   */
   hasFilters: boolean;
 }
 
@@ -111,6 +119,7 @@ export function parseVentaQuery(params: RawParams): VentaQuery {
     kmMax: num(params, "km_max"),
     transmission: oneOf(params, "transmission", TRANSMISSION_VALUES),
     traction: oneOf(params, "traction", TRACTION_VALUES),
+    sort: parseSort(params.orden),
     page: Math.max(1, num(params, "page") ?? 1),
     hasFilters: false,
   };
@@ -121,7 +130,8 @@ export function parseVentaQuery(params: RawParams): VentaQuery {
     q.priceMax !== undefined ||
     q.kmMax !== undefined ||
     q.transmission !== undefined ||
-    q.traction !== undefined;
+    q.traction !== undefined ||
+    q.sort !== DEFAULT_SORT;
   return q;
 }
 
@@ -153,7 +163,7 @@ export function toFilters(
  * own pagination hrefs, minting crawlable duplicates of the same seller page.
  */
 export function pageOnly(q: VentaQuery): VentaQuery {
-  return { page: q.page, hasFilters: false };
+  return { page: q.page, sort: DEFAULT_SORT, hasFilters: false };
 }
 
 /** Re-serialize the ACTIVE query filters (used by pagination links). */
@@ -172,6 +182,7 @@ export function queryString(
   set("km_max", q.kmMax);
   set("transmission", q.transmission);
   set("traction", q.traction);
+  set("orden", sortParam(q.sort));
   if (q.page > 1) set("page", q.page);
   for (const [k, v] of Object.entries(overrides)) {
     if (v === undefined || v === "") sp.delete(k);
