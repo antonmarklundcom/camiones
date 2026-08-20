@@ -20,6 +20,7 @@ import {
   smallint,
   text,
   tinyint,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
@@ -93,7 +94,20 @@ export const listings = mysqlTable(
     sellerId: fk("seller_id").notNull(),
 
     featured: boolean("featured").notNull().default(false), // home "destacados"
-    // Stable key for idempotent CSV re-imports: sha1(seller|brand|model|year|km).
+    /**
+     * Dealer-side identity anchor (chapa / stock id), normalised by
+     * `src/lib/import/identity.ts`. NULL for admin-created rows and for
+     * imports from a CSV without the column. When present it is the ONLY
+     * thing the importer matches on, so a mileage or price update can never
+     * mint a second listing for the same physical truck (F2).
+     */
+    externalId: varchar("external_id", { length: 60 }),
+    /**
+     * Stable key for idempotent CSV re-imports (F2). Derived by
+     * `importIdentity()`: sha1 over `seller|ext|<externalId>` when the CSV
+     * carries an anchor, else `seller|spec|brand|model|year` — km is
+     * deliberately NOT part of the key.
+     */
     importKey: char("import_key", { length: 40 }).unique(),
 
     status: mysqlEnum("status", [
@@ -141,6 +155,9 @@ export const listings = mysqlTable(
     index("idx_km").on(t.status, t.km),
     index("idx_transmission").on(t.status, t.transmission),
     index("idx_traction").on(t.status, t.traction),
+    // One dealer stock id / plate per seller. MySQL ignores NULLs in unique
+    // indexes, so admin rows and anchorless imports coexist freely.
+    uniqueIndex("uq_seller_external").on(t.sellerId, t.externalId),
   ],
 );
 
@@ -299,4 +316,70 @@ export const contentPages = mysqlTable(
     updatedBy: fk("updated_by"),
   },
   (t) => [index("idx_content_list").on(t.status, t.kind, t.publishedAt)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Import journal: import_jobs + import_rows (F12)                     */
+/* ------------------------------------------------------------------ */
+
+export const IMPORT_MODE_VALUES = ["dry-run", "commit"] as const;
+export type ImportMode = (typeof IMPORT_MODE_VALUES)[number];
+
+export const IMPORT_ACTION_VALUES = ["create", "update", "skip", "error"] as const;
+export type ImportAction = (typeof IMPORT_ACTION_VALUES)[number];
+
+/**
+ * One row per `npm run import:csv` invocation — dry runs included, because a
+ * dry run is the record of what a commit *would* have done and is worth
+ * keeping when the commit later surprises someone.
+ */
+export const importJobs = mysqlTable(
+  "import_jobs",
+  {
+    id: id(),
+    sellerId: fk("seller_id"), // NULL when the run aborted before resolving the seller
+    sellerSlug: varchar("seller_slug", { length: 180 }).notNull(),
+    file: varchar("file", { length: 500 }).notNull(),
+    fileSha1: char("file_sha1", { length: 40 }).notNull(), // re-run detection
+    mode: mysqlEnum("mode", IMPORT_MODE_VALUES).notNull(),
+    // Whether the CSV carried a chapa/stock_id column. Anchorless runs may
+    // never publish (F2), and that fact is worth keeping in the journal.
+    anchored: boolean("anchored").notNull().default(false),
+    publishRequested: boolean("publish_requested").notNull().default(false),
+    rowsTotal: int("rows_total", { unsigned: true }).notNull().default(0),
+    rowsCreated: int("rows_created", { unsigned: true }).notNull().default(0),
+    rowsUpdated: int("rows_updated", { unsigned: true }).notNull().default(0),
+    rowsSkipped: int("rows_skipped", { unsigned: true }).notNull().default(0),
+    rowsErrored: int("rows_errored", { unsigned: true }).notNull().default(0),
+    status: mysqlEnum("status", ["planned", "committed", "failed"])
+      .notNull()
+      .default("planned"),
+    notes: text("notes"),
+    startedAt: createdAt(),
+    finishedAt: datetime("finished_at"),
+  },
+  (t) => [index("idx_import_job_seller").on(t.sellerSlug, t.startedAt)],
+);
+
+/**
+ * One row per CSV data row per job. `previous_json` is the pre-change listing
+ * snapshot — the only thing that makes an import reversible without guessing
+ * (propia lesson 5). Written inside the same transaction as the listing write.
+ */
+export const importRows = mysqlTable(
+  "import_rows",
+  {
+    id: id(),
+    jobId: fk("job_id").notNull(),
+    rowNo: int("row_no", { unsigned: true }).notNull(), // CSV line number, header = 1
+    action: mysqlEnum("action", IMPORT_ACTION_VALUES).notNull(),
+    importKey: char("import_key", { length: 40 }),
+    externalId: varchar("external_id", { length: 60 }),
+    listingId: fk("listing_id"),
+    changedFields: varchar("changed_fields", { length: 500 }), // comma-separated
+    previousJson: text("previous_json"),
+    error: varchar("error", { length: 500 }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("idx_import_row_job").on(t.jobId, t.rowNo)],
 );

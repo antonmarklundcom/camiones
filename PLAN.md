@@ -5,7 +5,7 @@
 > STATUS line below, and commits it. Next session starts by reading this file — no
 > re-discovery from zero.
 >
-> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 Batch 0 — DONE` · `Batch 1 — 8 of 13 fixes done` — last updated 2026-08-20**
+> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 Batch 0 — DONE` · `Batch 1 — 8 of 13 fixes done` · `Batch 2 — DONE` — last updated 2026-08-20**
 > Remaining Phase 4 items are blocked on real data (dealer inventory, verified financing rates) — see Phase 4.
 > **Next work = Phase 6** (batches 0–7 below), driven by `docs/audit-camiones.md` + the Decisions Log.
 > Read `CLAUDE.md` first in every session.
@@ -148,7 +148,7 @@ blocked on real-world data, not code.)
 
 ## Phase 4 — Content, SEO & supply ramp (**Sonnet 4.6, LOW–MED**; Fable 5 HIGH only for content strategy)
 
-- [ ] Import first real inventory (CSV per dealer, `--publish` flag pattern — column contract in `data/ejemplo-inventario.csv`) — **blocked: needs real dealer data (Phase 0 supply decision)**
+- [ ] Import first real inventory (CSV per dealer — contract in `data/README-import.md`; ask the dealer for a `chapa`/`stock_id` column, otherwise the importer refuses `--publish` by design) — **blocked: needs real dealer data (Phase 0 supply decision)**
 - [x] Batch content via Anthropic API (propia pattern — batch jobs, never in request path): buying guides, brand hubs, category intros — **infra shipped in Build 3** (`content:guides`; run with an API key to generate drafts)
 - [ ] Verify real financing rates (banks/financieras/AFD-equivalent for commercial vehicles) — **replace the (PLACEHOLDER) programs before launch** and re-run `cron:cuotas` — **blocked: needs verified external rates**
 - [ ] Replace Demo Dealer sample listings once real inventory exists — **blocked on real inventory**
@@ -233,7 +233,43 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 > open and are the next work. Consequence: there is no `leads` table yet, so the
 > "run db:migrate for the leads table" item is not actionable — `drizzle/0002_*`
 > (this session) only touches `users` nullability and `listings` indexes.
-- [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
+- [x] **Batch 2 — import rebuild** ✅ 2026-08-20 (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
+      > **As built:** `src/lib/import/` split four ways — `identity.ts` (anchor
+      > normalisation + key derivation), `merge.ts` (field ownership +
+      > availability→status), `plan.ts` (the pure planner), `commit.ts` (the
+      > only writer). `scripts/import-csv.ts` is now argument parsing +
+      > lookups + "print the plan or commit it".
+      > **F2:** `chapa`/`stock_id`/`patente`/`placa` accepted as the anchor and
+      > stored on `listings.external_id` (unique per seller); the anchorless
+      > fallback drops `km` from the key and `--publish` is refused with an
+      > es-PY explanation (exit 2, nothing written). Repeated anchors inside one
+      > sheet are a planner error naming the earlier line, not a unique-index
+      > crash. **F3:** `status`/`published_at` are written on create only, or
+      > through the optional `estado` column via the F27 transition rules —
+      > `disponible` un-pauses but never publishes a draft or revives a sold
+      > row; first `published_at` preserved. Merge policy per the Decisions Log;
+      > photos only fill an EMPTY gallery unless `--replace-photos`.
+      > **F12:** `drizzle/0003_*` adds `import_jobs`/`import_rows`; every run
+      > (dry runs too) is journalled with `previous_json` capturing exactly the
+      > fields that moved; one transaction per row (listing + photos + journal
+      > entry together); a missing seller aborts unless `--create-seller`, which
+      > creates it as a **draft**; exit 1 if ANY row errored. **F28:** import
+      > public ids are `I` + 9 random Crockford chars with a collision retry,
+      > not a slice of the identity hash.
+      > 39 new vitest cases (`tests/import-identity|merge|plan.test.ts`, 168
+      > total). Verified end-to-end against a real MariaDB 10.11 in the session:
+      > migrations 0000→0003, seeds, then the typo'd-seller refusal, the
+      > anchorless-publish refusal, dry-run-writes-nothing, publish, the F3
+      > re-run (stayed published, `published_at` unchanged), the F2 mileage
+      > update (updated in place — the old code created a 4th listing),
+      > admin-edited description/category/photos surviving, `--replace-photos`,
+      > `estado=vendido`, and non-zero exit on a bad row.
+      > Fixed along the way: a correlated `sql` subquery for photo counts that
+      > drizzle rendered unqualified (`where listing_id = id` resolved both
+      > sides inside `images`, so every listing looked like it had photos) —
+      > now a grouped query. Noted in CLAUDE.md as a trap.
+      > **Still needs a real-DB pass by Anton:** run `npm run db:migrate` for
+      > `0003_*` against the Hostinger DB before the first real import.
 - [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).
 - [ ] **Batch 5 — UX wins + first-party analytics** (parallel-safe small PRs): sort controls + "precio bajó" badge (I5), "Publicado hace X días" (I7), verified-seller badge (I6), capacity/vocation facets (I9, optional); **first-party analytics module**: `/wa/[publicId]` redirect logging (I8) + events table (view/wa_click/lead) + per-listing/per-seller admin dashboard; async writes + daily aggregation (shared-MySQL-friendly). No third-party analytics scripts.

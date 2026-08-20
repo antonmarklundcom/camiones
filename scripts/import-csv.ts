@@ -1,99 +1,149 @@
 /**
- * Dealer-inventory CSV importer (propia pattern).
+ * Dealer-inventory CSV importer — rebuilt for Phase 6 Batch 2 (audit F2, F3,
+ * F12, F28).
  *
- *   npx tsx scripts/import-csv.ts <file.csv> <seller-slug> [--publish]
- *   npm run import:csv -- data/dealer-x.csv dealer-x --publish
+ *   npm run import:csv -- <file.csv> <seller-slug> [flags]
  *
- * Without --publish, rows land as drafts (review in Drizzle Studio until the
- * Build-2 admin exists). Idempotent: each row gets a deterministic import_key
- * = sha1(seller|marca|modelo|año|km); re-running the same file updates
- * instead of duplicating. The seller is upserted by slug.
+ * Flags:
+ *   --dry-run          plan and journal the run, write nothing to `listings`
+ *   --publish          create new rows as `published` (REFUSED without an
+ *                      identity anchor column — see below)
+ *   --create-seller    allow creating the seller (as a DRAFT) when the slug
+ *                      does not exist yet
+ *   --replace-photos   let the CSV overwrite an admin-curated gallery
  *
- * Expected columns (header row, case-insensitive; * = required):
- *   marca* modelo* anio* km precio_usd* precio_gs condicion* categoria*
- *   transmision combustible traccion capacidad_kg ciudad* descripcion fotos
- * - categoria accepts DB values (camion, tractocamion…) or URL plurals
- *   (camiones, tractocamiones…).
- * - fotos = R2 keys separated by "|" (optional).
+ * Identity (F2): give the sheet a `chapa` (or `stock_id` / `patente` /
+ * `placa`) column. With it, a truck is matched on `sha1(seller|ext|<anchor>)`
+ * and monthly price/km updates always MERGE. Without it the importer falls
+ * back to a spec bucket (brand+model+year, km deliberately excluded) and
+ * refuses `--publish`, because that bucket can silently fuse two distinct
+ * trucks and only a human looking at drafts will catch it.
+ *
+ * Publish state (F3): `status`/`published_at` are set ONLY when a row is
+ * created. On update they move only if the sheet carries an `estado` column,
+ * and even then only through the F27 transition rules — the first
+ * `published_at` is preserved forever. Merge policy: import wins
+ * price/km/spec/availability, admin wins description/photos/category.
+ *
+ * Safety (F12): one shared plan/commit path (so `--dry-run` exercises exactly
+ * the code a real run does), an `import_jobs`/`import_rows` journal with a
+ * `previous_json` snapshot per changed row, one transaction per row, and a
+ * non-zero exit if ANY row errored.
+ *
+ * Column contract: `data/ejemplo-inventario.csv`.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { eq } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../src/db";
 import {
   brands,
+  financingPrograms,
   images,
   listings,
   locations,
   sellers,
-  financingPrograms,
-  CATEGORY_VALUES,
-  CONDITION_VALUES,
-  FUEL_VALUES,
-  TRACTION_VALUES,
-  TRANSMISSION_VALUES,
-  type Category,
 } from "../src/db/schema";
+import type { ListingStatus } from "../src/lib/admin/constants";
 import { parseCsv } from "../src/lib/csv";
+import type { FinancingProgram } from "../src/lib/cuota";
+import { commitImport, finishJob, journalPlan, startJob } from "../src/lib/import/commit";
+import {
+  planImport,
+  summarizePlan,
+  type BrandRef,
+  type CityRef,
+  type ExistingListing,
+} from "../src/lib/import/plan";
 import { slugify } from "../src/lib/slug";
-import { bestCuota, type FinancingProgram } from "../src/lib/cuota";
-import { categoryBySlug } from "../src/lib/taxonomy";
 
 const USD_TO_PYG = Number(process.env.USD_TO_PYG ?? 7300);
 
-function parseCategory(raw: string): Category | null {
-  const v = slugify(raw);
-  if ((CATEGORY_VALUES as readonly string[]).includes(v)) return v as Category;
-  return categoryBySlug(v)?.value ?? null;
-}
+const USAGE =
+  "uso: npm run import:csv -- <archivo.csv> <seller-slug> " +
+  "[--dry-run] [--publish] [--create-seller] [--replace-photos]";
 
-function oneOf<T extends string>(raw: string, values: readonly T[], fallback: T): T {
-  const v = slugify(raw) as T;
-  return values.includes(v) ? v : fallback;
+const KNOWN_FLAGS = new Set([
+  "--dry-run",
+  "--publish",
+  "--create-seller",
+  "--replace-photos",
+]);
+
+function fail(message: string, code = 1): never {
+  console.error(`\n✗ ${message}\n`);
+  process.exit(code);
 }
 
 async function main() {
   const args = process.argv.slice(2);
-  const publish = args.includes("--publish");
-  const positional = args.filter((a) => !a.startsWith("--"));
-  const [file, sellerSlugArg] = positional;
-  if (!file || !sellerSlugArg) {
-    console.error("usage: tsx scripts/import-csv.ts <file.csv> <seller-slug> [--publish]");
-    process.exit(1);
-  }
+  const flags = args.filter((a) => a.startsWith("--"));
+  const unknown = flags.filter((f) => !KNOWN_FLAGS.has(f));
+  if (unknown.length) fail(`flag desconocido: ${unknown.join(", ")}\n${USAGE}`);
+
+  const dryRun = flags.includes("--dry-run");
+  const publish = flags.includes("--publish");
+  const createSeller = flags.includes("--create-seller");
+  const replacePhotos = flags.includes("--replace-photos");
+
+  const [file, sellerSlugArg] = args.filter((a) => !a.startsWith("--"));
+  if (!file || !sellerSlugArg) fail(USAGE);
   const sellerSlug = slugify(sellerSlugArg);
 
-  // --- seller (upsert by slug) --------------------------------------------
-  const sellerName = sellerSlug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-  await db
-    .insert(sellers)
-    .values({
-      name: sellerName,
-      slug: sellerSlug,
-      type: "dealer",
-      status: "published",
-      publishedAt: new Date(),
-    })
-    .onDuplicateKeyUpdate({ set: { slug: sellerSlug } });
+  const raw = readFileSync(file, "utf8");
+  const fileSha1 = createHash("sha1").update(raw).digest("hex");
+  const records = parseCsv(raw);
+  if (!records.length) fail(`'${file}' no tiene filas de datos.`);
+
+  /* --- seller: must already exist (F12) ---------------------------------- */
   const [seller] = await db
-    .select({ id: sellers.id })
+    .select({ id: sellers.id, name: sellers.name, status: sellers.status })
     .from(sellers)
     .where(eq(sellers.slug, sellerSlug))
     .limit(1);
 
-  // --- lookups ---------------------------------------------------------------
+  let sellerId: number;
+  if (seller) {
+    sellerId = seller.id;
+  } else if (!createSeller) {
+    // The old importer upserted the CLI argument, so one typo minted a live
+    // PUBLISHED seller with a derived name and no phone that quietly absorbed
+    // the whole inventory.
+    fail(
+      `no existe ningún vendedor con slug '${sellerSlug}'.\n` +
+        `  Si el slug está bien escrito, creá el vendedor en /admin/sellers ` +
+        `(o volvé a correr con --create-seller, que lo crea como BORRADOR).\n` +
+        `  Si es un typo, corregilo: un slug equivocado le atribuye todo el ` +
+        `inventario a otro vendedor.`,
+    );
+  } else {
+    const name = sellerSlug
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+    const [res] = await db.insert(sellers).values({
+      name,
+      slug: sellerSlug,
+      type: "dealer",
+      // Draft, never published: a seller page goes live when a human says so.
+      status: "draft",
+      publishedAt: null,
+    });
+    sellerId = Number(res.insertId);
+    console.log(`+ vendedor '${sellerSlug}' creado como BORRADOR (id ${sellerId}).`);
+  }
+
+  /* --- lookups ----------------------------------------------------------- */
   const brandRows = await db
     .select({ id: brands.id, slug: brands.slug, name: brands.name })
     .from(brands);
-  const brandBySlug = new Map(brandRows.map((b) => [b.slug, b]));
+  const brandBySlug = new Map<string, BrandRef>(brandRows.map((b) => [b.slug, b]));
+
   const cityRows = await db
     .select({ id: locations.id, slug: locations.slug })
     .from(locations)
     .where(eq(locations.level, "ciudad"));
-  const cityBySlug = new Map(cityRows.map((c) => [c.slug, c]));
+  const cityBySlug = new Map<string, CityRef>(cityRows.map((c) => [c.slug, c]));
 
   const programRows = await db.select().from(financingPrograms);
   const programs: FinancingProgram[] = programRows.map((p) => ({
@@ -106,116 +156,145 @@ async function main() {
     active: p.active,
   }));
 
-  // --- rows --------------------------------------------------------------------
-  const records = parseCsv(readFileSync(file, "utf8"));
-  let created = 0;
-  let updated = 0;
-  const errors: string[] = [];
+  /* --- existing imported rows for this seller ---------------------------- */
+  const existingRows = await db
+    .select({
+      id: listings.id,
+      publicId: listings.publicId,
+      importKey: listings.importKey,
+      externalId: listings.externalId,
+      title: listings.title,
+      brandId: listings.brandId,
+      model: listings.model,
+      year: listings.year,
+      km: listings.km,
+      condition: listings.condition,
+      category: listings.category,
+      priceUsd: listings.priceUsd,
+      priceGs: listings.priceGs,
+      cuotaGs: listings.cuotaGs,
+      transmission: listings.transmission,
+      fuel: listings.fuel,
+      traction: listings.traction,
+      capacityKg: listings.capacityKg,
+      locationId: listings.locationId,
+      status: listings.status,
+      publishedAt: listings.publishedAt,
+    })
+    .from(listings)
+    .where(and(eq(listings.sellerId, sellerId), isNotNull(listings.importKey)));
 
-  for (const [i, rec] of records.entries()) {
-    const rowNo = i + 2; // header is row 1
-    try {
-      const brand = brandBySlug.get(slugify(rec.marca ?? ""));
-      if (!brand) throw new Error(`marca desconocida '${rec.marca}'`);
-      const city = cityBySlug.get(slugify(rec.ciudad ?? ""));
-      if (!city) throw new Error(`ciudad desconocida '${rec.ciudad}'`);
-      const category = parseCategory(rec.categoria ?? "");
-      if (!category) throw new Error(`categoria desconocida '${rec.categoria}'`);
-      const condition = oneOf(rec.condicion ?? "", CONDITION_VALUES, "usado");
-
-      const model = (rec.modelo ?? "").trim();
-      if (!model) throw new Error("modelo vacío");
-      const year = Number(rec.anio ?? rec["año"] ?? rec.ano);
-      if (!Number.isInteger(year) || year < 1970 || year > 2035) {
-        throw new Error(`año inválido '${rec.anio}'`);
-      }
-      const km = Math.max(0, Math.round(Number(rec.km ?? 0) || 0));
-      const priceUsd = Number(rec.precio_usd);
-      if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
-        throw new Error(`precio_usd inválido '${rec.precio_usd}'`);
-      }
-      const priceGs = Math.round(Number(rec.precio_gs) || priceUsd * USD_TO_PYG);
-
-      const importKey = createHash("sha1")
-        .update(`${sellerSlug}|${brand.slug}|${model.toLowerCase()}|${year}|${km}`)
-        .digest("hex");
-      const publicId = `I${importKey.slice(0, 9).toUpperCase()}`;
-      const title = `${brand.name} ${model} ${year}`;
-      const slug = `${slugify(title)}-${publicId.toLowerCase()}`;
-      const cuota = bestCuota(priceGs, programs);
-
-      const [existing] = await db
-        .select({ id: listings.id })
-        .from(listings)
-        .where(eq(listings.importKey, importKey))
-        .limit(1);
-
-      const values = {
-        publicId,
-        slug,
-        title,
-        condition,
-        category,
-        brandId: brand.id,
-        model,
-        year,
-        km,
-        priceUsd: priceUsd.toFixed(2),
-        priceGs: String(priceGs),
-        cuotaGs: cuota ? String(cuota.monthlyGs) : null,
-        transmission: oneOf(rec.transmision ?? "", TRANSMISSION_VALUES, "manual"),
-        fuel: oneOf(rec.combustible ?? "", FUEL_VALUES, "diesel"),
-        traction: oneOf(rec.traccion ?? "", TRACTION_VALUES, "4x2"),
-        capacityKg: Number(rec.capacidad_kg) > 0 ? Math.round(Number(rec.capacidad_kg)) : undefined,
-        description: (rec.descripcion ?? "").trim() || null,
-        locationId: city.id,
-        sellerId: seller.id,
-        importKey,
-        status: publish ? ("published" as const) : ("draft" as const),
-        publishedAt: publish ? new Date() : null,
-      };
-
-      await db
-        .insert(listings)
-        .values(values)
-        .onDuplicateKeyUpdate({ set: { ...values } });
-      if (existing) updated++;
-      else created++;
-
-      // photos: replace deterministically when the column is present
-      const fotos = (rec.fotos ?? "")
-        .split("|")
-        .map((k) => k.trim())
-        .filter(Boolean);
-      if (fotos.length) {
-        const [row] = await db
-          .select({ id: listings.id })
-          .from(listings)
-          .where(eq(listings.importKey, importKey))
-          .limit(1);
-        await db.delete(images).where(eq(images.listingId, row.id));
-        for (const [s, key] of fotos.entries()) {
-          await db.insert(images).values({
-            listingId: row.id,
-            r2Key: key,
-            sortOrder: s,
-            alt: `${title} — foto ${s + 1}`,
-          });
-        }
-      }
-    } catch (e) {
-      errors.push(`fila ${rowNo}: ${e instanceof Error ? e.message : String(e)}`);
-    }
+  // Photo counts as their own grouped query rather than a correlated subquery:
+  // drizzle renders a `sql` template's column references unqualified, so
+  // `where listing_id = id` resolved BOTH sides inside `images` and every
+  // listing came back with a non-zero count (caught on a live MariaDB run).
+  const listingIds = existingRows.map((r) => r.id);
+  const imageCounts = new Map<number, number>();
+  if (listingIds.length) {
+    const counted = await db
+      .select({ listingId: images.listingId, n: count() })
+      .from(images)
+      .where(inArray(images.listingId, listingIds))
+      .groupBy(images.listingId);
+    for (const c of counted) imageCounts.set(c.listingId, Number(c.n));
   }
 
+  const existing = new Map<string, ExistingListing>();
+  for (const r of existingRows) {
+    if (!r.importKey) continue;
+    existing.set(r.importKey, {
+      ...r,
+      status: r.status as ListingStatus,
+      imageCount: imageCounts.get(r.id) ?? 0,
+    });
+  }
+
+  /* --- plan (the only place decisions are made) -------------------------- */
+  const now = new Date();
+  const plan = planImport({
+    records,
+    sellerSlug,
+    sellerId,
+    publish,
+    replacePhotos,
+    brands: brandBySlug,
+    cities: cityBySlug,
+    existing,
+    programs,
+    usdToPyg: USD_TO_PYG,
+    now,
+  });
+
+  const ctx = {
+    sellerId,
+    sellerSlug,
+    file,
+    fileSha1,
+    mode: (dryRun ? "dry-run" : "commit") as "dry-run" | "commit",
+    publishRequested: publish,
+  };
+
+  const header =
+    `\nimport '${file}' → vendedor '${sellerSlug}'` +
+    ` [${dryRun ? "DRY-RUN" : "COMMIT"}]` +
+    ` · identidad: ${plan.anchored ? "chapa/stock_id" : "marca+modelo+año (sin ancla)"}`;
+
+  /* --- hard refusals: nothing is written to listings --------------------- */
+  if (plan.refusals.length) {
+    const notes = plan.refusals.join("\n");
+    const jobId = await startJob(plan, ctx, notes);
+    await finishJob(jobId, "failed", plan.counts, notes);
+    console.log(header);
+    for (const r of plan.refusals) console.error(`\n✗ ${r}`);
+    console.error(`\n  (job #${jobId} registrado como 'failed'; no se escribió nada)\n`);
+    process.exit(2);
+  }
+
+  const jobId = await startJob(plan, ctx);
+
+  if (dryRun) {
+    await journalPlan(jobId, plan);
+    await finishJob(jobId, "committed", plan.counts);
+    console.log(`${header}\n${summarizePlan(plan)}`);
+    printRows(plan.rows);
+    console.log(`\n  nada escrito (--dry-run) · job #${jobId}\n`);
+    process.exit(plan.counts.error > 0 ? 1 : 0);
+  }
+
+  const result = await commitImport(plan, ctx, jobId);
+  await finishJob(jobId, result.counts.error ? "failed" : "committed", result.counts);
+
   console.log(
-    `\nimport '${file}' → seller '${sellerSlug}'${publish ? " (published)" : " (draft)"}\n` +
-      `  creados:      ${created}\n` +
-      `  actualizados: ${updated}\n` +
-      `  con error:    ${errors.length}`,
+    `${header}\n` +
+      `  creados:      ${result.counts.create}\n` +
+      `  actualizados: ${result.counts.update}\n` +
+      `  sin cambios:  ${result.counts.skip}\n` +
+      `  con error:    ${result.counts.error}`,
   );
-  for (const e of errors) console.log(`  ✗ ${e}`);
-  process.exit(errors.length && !created && !updated ? 1 : 0);
+  // Plan-time errors AND write-time failures both land in result.errors, so
+  // printRows only reports the rows that did something.
+  printRows(plan.rows, false);
+  for (const e of result.errors) console.log(`  ✗ fila ${e.rowNo}: ${e.message}`);
+  console.log(`\n  job #${jobId} · revertí con import_rows.previous_json si hace falta\n`);
+
+  // F12: a mostly-failed import used to exit 0 as long as one row landed.
+  process.exit(result.counts.error > 0 ? 1 : 0);
+}
+
+function printRows(
+  rows: { rowNo: number; action: string; changed: string[]; error: string | null }[],
+  includeErrors = true,
+) {
+  const interesting = rows.filter(
+    (r) => r.action !== "skip" && (includeErrors || r.action !== "error"),
+  );
+  if (!interesting.length) return;
+  console.log("");
+  for (const r of interesting) {
+    const detail = r.error ?? (r.changed.length ? r.changed.join(", ") : "");
+    const mark = r.action === "error" ? "✗" : r.action === "create" ? "+" : "~";
+    console.log(`  ${mark} fila ${r.rowNo} ${r.action}${detail ? ` · ${detail}` : ""}`);
+  }
 }
 
 main().catch((e) => {

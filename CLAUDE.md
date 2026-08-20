@@ -25,7 +25,9 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - `npm run seed:admin` (ADMIN_EMAIL/ADMIN_PASSWORD env). Creating a NEW admin is
   the default; touching an EXISTING user needs `-- --rotate` AND an explicit
   ADMIN_PASSWORD, and it announces any role promotion (F21 fixed).
-- `npm run import:csv` (CSV contract: `data/ejemplo-inventario.csv`)
+- `npm run import:csv -- <archivo.csv> <seller-slug> [--dry-run] [--publish]
+  [--create-seller] [--replace-photos]` (contract: `data/README-import.md`,
+  ejemplo: `data/ejemplo-inventario.csv`)
 - `npm run cron:cuotas`, `npm run content:guides` (Anthropic batch → drafts only)
 - tsx does NOT auto-load `.env` — set `DATABASE_URL` in the shell for scripts.
 
@@ -35,6 +37,8 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `/camion/[slug]`, `/vendedor/[slug]`, `/guias`, `/buscar` (no-JS GET → 302 to
   canonical segment URL, robots-disallowed).
 - `app/(admin)/admin/` panel; `login/` sits outside the auth-gated `(panel)` group.
+- `src/lib/import/`: `identity.ts` (the F2 anchor rules), `merge.ts` (field
+  ownership + availability), `plan.ts` (the planner), `commit.ts` (the writer).
 - `src/lib/` engine logic: `queries.ts` (all public reads), `venta-params.ts`
   (segment-URL resolution — category/brand/city/condition share one namespace by
   precedence), `indexability.ts` (shared page/sitemap contract), `urls.ts`,
@@ -42,7 +46,7 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 - `src/lib/auth/`: iron-session + bcryptjs (NOT native bcrypt — Hostinger can't
   compile addons). Every server action self-guards (`requireUser`/`requireAdmin`,
   `assertCanManageSeller`); dealers scoped to their `sellerId`.
-- `src/db/schema.ts`: 8 tables. Roles: `admin | dealer` (staff planned, Batch 4).
+- `src/db/schema.ts`: 10 tables (8 + the `import_jobs`/`import_rows` journal). Roles: `admin | dealer` (staff planned, Batch 4).
 - Uploads re-encode to WebP via sharp at ingest (long edge ≤1600, q80).
 
 ## Deliberate non-features & traps (do not "fix" casually)
@@ -58,14 +62,32 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   `cron:cuotas` (not yet wired to any scheduler; Batch 3 wires a guarded route +
   external pinger). FX rate is a static env `USD_TO_PYG` until Batch 3 moves it
   to the DB.
-- **Import re-runs are dangerous** (F2/F3/F12): identity key includes `km`
-  (mileage update ⇒ duplicate listing), re-run without `--publish` demotes
-  published rows, no transactions/journal/dry-run. Batch 2 rebuilds this.
-  Until then: never re-run an import against real data without reading the audit.
+- **The importer is a planner + committer** (Batch 2, F2/F3/F12/F28). Never
+  re-decide anything in the commit path: `planImport()` (`src/lib/import/plan.ts`,
+  pure, no DB) makes every decision, `commitImport()` writes it one transaction
+  per row, and `--dry-run` is the same plan with the write step skipped.
+  - Identity: `chapa`/`stock_id` column ⇒ key is `sha1(seller|ext|<anchor>)`.
+    No anchor ⇒ spec bucket WITHOUT km, and `--publish` is REFUSED (an
+    anchorless run can fuse two distinct trucks; drafts get a human's eyes).
+  - Merge policy: import wins price/km/spec/availability, admin wins
+    description/category/photos/featured. `status`/`published_at` move only on
+    create, or via the optional `estado` column (which can un-pause but never
+    publish a draft or resurrect a sold row). First `published_at` is forever.
+  - Photos load only into an empty gallery unless `--replace-photos`.
+  - The seller must already exist; `--create-seller` creates it as a DRAFT.
+  - Every run (dry ones included) journals to `import_jobs`/`import_rows`, with
+    `previous_json` = the pre-change values of exactly the fields that moved.
+  - Exit codes: 0 clean, 1 any row errored, 2 refused before writing anything.
+  - Column contract + operator notes: `data/README-import.md`.
 - **Sessions no longer bake in privileges** (F8 fixed): the cookie is only a
   claim of identity — `getCurrentUser()` re-reads the user row on every guarded
   request and takes role/sellerId from the DB. One indexed PK read; do NOT cache
   it, that reintroduces the staleness window.
+- **Drizzle renders `sql` template column refs UNQUALIFIED** — a correlated
+  subquery written as ``sql`(select count(*) from ${images} where
+  ${images.listingId} = ${listings.id})` `` resolves BOTH sides inside `images`
+  and silently returns the wrong count. Use a separate grouped query (see the
+  photo counts in `scripts/import-csv.ts`) or qualify the columns by hand.
 - **Admin read scopes fail closed** (F20): anything that isn't a confirmed admin,
   or is a dealer with NULL `sellerId`, gets a `1 = 0` filter. `users.email` and
   `users.password_hash` are NOT NULL as of `drizzle/0002_*`.

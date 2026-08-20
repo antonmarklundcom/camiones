@@ -1,4 +1,4 @@
-marca,modelo,anio,km,precio_usd,precio_gs,condicion,categoria,transmision,combustible,traccion,capacidad_kg,ciudad,descripcion,fotos
-Scania,R500,2021,320000,105000,,usado,tractocamiones,automatizada,diesel,6x4,26000,Asunción,"Tracto Scania R500, motor V8, listo para bitren.",
-Hyundai,HD65,2019,140000,26500,,usado,camiones,manual,diesel,4x2,3500,Ciudad del Este,"Camión liviano ideal reparto urbano.",
-JAC,X350,2025,0,21900,,nuevo,camionetas,manual,nafta,4x2,1800,Luque,"0 km con garantía de fábrica.",
+chapa,marca,modelo,anio,km,precio_usd,precio_gs,condicion,categoria,transmision,combustible,traccion,capacidad_kg,ciudad,estado,descripcion,fotos
+ABC123,Scania,R500,2021,320000,105000,,usado,tractocamiones,automatizada,diesel,6x4,26000,Asunción,disponible,"Tracto Scania R500, motor V8, listo para bitren.",
+HD65-0042,Hyundai,HD65,2019,140000,26500,,usado,camiones,manual,diesel,4x2,3500,Ciudad del Este,disponible,"Camión liviano ideal reparto urbano.",
+STK-2025-011,JAC,X350,2025,0,21900,,nuevo,camionetas,manual,nafta,4x2,1800,Luque,disponible,"0 km con garantía de fábrica.",
