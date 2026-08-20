@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { sellers } from "@/db/schema";
 import { slugify } from "@/lib/slug";
 import { uploadToR2 } from "@/lib/r2";
+import { assertImageUpload, LOGO_LIMITS } from "@/lib/uploads";
 import type { SessionUser } from "@/lib/auth/session";
 import { assertCanManageSeller } from "@/lib/auth/guard";
 
@@ -177,6 +178,8 @@ export async function setSellerLogo(
     .where(eq(sellers.id, id))
     .limit(1);
   if (!current) throw new Error("La concesionaria no existe.");
+  // F10: this path buffers the whole file into memory before sharp sees it.
+  assertImageUpload(file, LOGO_LIMITS);
 
   const sharp = (await import("sharp")).default;
   const webp = await sharp(Buffer.from(await file.arrayBuffer()))

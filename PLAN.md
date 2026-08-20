@@ -5,7 +5,7 @@
 > STATUS line below, and commits it. Next session starts by reading this file — no
 > re-discovery from zero.
 >
-> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 — Batch 0 DONE, Batch 1 next` — last updated 2026-08-20**
+> **STATUS: `PHASE 2 — DONE` · `PHASE 4 content system (BUILD 3) — DONE` · `PHASE 6 Batch 0 — DONE` · `Batch 1 — 8 of 13 fixes done` — last updated 2026-08-20**
 > Remaining Phase 4 items are blocked on real data (dealer inventory, verified financing rates) — see Phase 4.
 > **Next work = Phase 6** (batches 0–7 below), driven by `docs/audit-camiones.md` + the Decisions Log.
 > Read `CLAUDE.md` first in every session.
@@ -211,7 +211,28 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
       > **Still on Anton (hPanel/GitHub UI, not code):** enable branch protection on
       > `main` with NO required status check + auto-merge; keep Actions disabled and
       > the billing spending limit at $0.
-- [ ] **Batch 1 — independent fixes** (one small PR each, parallel): leads write-ahead table + GHL retry (F1), contact-CTA hide/fallback when no phone (F6), session revalidation (F8), rate limit + honeypot (F9), serverActions bodySizeLimit + logo/hero caps (F10), runtime caching (F13), filter indexes (F14), pagination canonicals (F15/F16), users NOT NULL + dealer scope fail-closed (F20), seed-admin `--rotate` guard (F21), slug-namespace uniqueness (F24), status-transition rules + admin-only `featured` (F27).
+- [ ] **Batch 1 — independent fixes** (one small PR each, parallel) — **PARTLY DONE**:
+  - [x] session revalidation (F8) — `src/lib/auth/revalidate.ts`, called from `getCurrentUser()`
+  - [x] serverActions bodySizeLimit + logo/hero caps (F10) — `src/lib/uploads.ts` + `next.config.ts`
+  - [x] filter indexes (F14) — `drizzle/0002_*`, index shapes match the real /venta queries
+  - [x] pagination canonicals (F15/F16) — `paginatedCanonical()`/`paginationIndexability()`/`pageOnly()`
+  - [x] users NOT NULL + dealer scope fail-closed (F20) — `drizzle/0002_*` (with backfill) + `MATCH_NOTHING` scope
+  - [x] seed-admin `--rotate` guard (F21)
+  - [x] slug-namespace uniqueness (F24) — `src/lib/venta-namespace.ts`, wired into both taxonomy seeds
+  - [x] status-transition rules + admin-only `featured` (F27) — `src/lib/admin/listing-policy.ts`
+  - [ ] leads write-ahead table + CRM retry (F1) — **NOT STARTED** (see note below)
+  - [ ] contact-CTA hide/fallback when no phone (F6) — **NOT STARTED**
+  - [ ] rate limit + honeypot (F9) — **NOT STARTED**
+  - [ ] runtime caching (F13) — **NOT STARTED**
+  - [ ] GHL → VenderCRM lead-sink switch — **NOT STARTED**
+
+> **Correction (2026-08-20):** PR #7 was believed to have landed Batch 0 plus the
+> first five Batch 1 fixes (F1, F6, F9, F10, F13) and the GHL→VenderCRM switch.
+> It did not — PR #7 contains only the decisions/planning updates. Batch 0
+> landed separately in PR #9; F1/F6/F9/F13 and the CRM switch are still
+> open and are the next work. Consequence: there is no `leads` table yet, so the
+> "run db:migrate for the leads table" item is not actionable — `drizzle/0002_*`
+> (this session) only touches `users` nullability and `listings` indexes.
 - [ ] **Batch 2 — import rebuild** (one PR): identity anchor column, publish-state preservation, shared plan/commit with `--dry-run`, import journal (`import_jobs`/`import_rows` + previous_json), per-row transactions, non-zero exit on row errors, seller must pre-exist or `--create-seller` (F2/F3/F12/F28).
 - [ ] **Batch 3 — money** (one PR): FX rate in DB + recompute (F11), cron route + pinger wiring (F4), shared card/calculator cuota default + "estimada*" marker (F5), per-program rate convention (F26), financing feature flag default-off until real rates.
 - [ ] **Batch 4 — template seam** (one PR, after 1–3): `site.config.ts` (F17), message catalogue extraction, categories table (replaces enum), feature flags, `staff` role, lead-sink interface, FK constraints (F19).

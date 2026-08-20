@@ -23,6 +23,11 @@ import {
   LISTING_STATUS_VALUES,
   type ListingStatus,
 } from "@/lib/admin/constants";
+import {
+  assertStatusTransition,
+  nextPublishedAt,
+  resolveFeatured,
+} from "@/lib/admin/listing-policy";
 
 export {
   LISTING_STATUS_VALUES,
@@ -148,7 +153,11 @@ export async function createListing(
   });
   const slug = `${slugify(title)}-${publicId.toLowerCase()}`;
   const money = await moneyFields(input);
-  const publishing = input.status === "published";
+  // F27: a brand-new listing can only be born as a draft or published — never
+  // as sold/paused/removed, which are lifecycle states of an existing listing.
+  const status: ListingStatus =
+    input.status === "published" ? "published" : "draft";
+  const publishing = status === "published";
 
   await db.insert(listings).values({
     publicId,
@@ -168,8 +177,9 @@ export async function createListing(
     description: input.description || null,
     locationId: input.locationId,
     sellerId,
-    featured: input.featured,
-    status: input.status,
+    // F27: dealers can't self-feature (paid placement, PLAN.md).
+    featured: resolveFeatured(user.role, input.featured, false),
+    status,
     publishedAt: publishing ? new Date() : null,
     updatedBy: user.id,
   });
@@ -192,6 +202,7 @@ export async function updateListing(
     .select({
       sellerId: listings.sellerId,
       status: listings.status,
+      featured: listings.featured,
       publishedAt: listings.publishedAt,
     })
     .from(listings)
@@ -199,6 +210,7 @@ export async function updateListing(
     .limit(1);
   if (!current) throw new Error("El aviso no existe.");
   assertCanManageSeller(user, current.sellerId);
+  assertStatusTransition(current.status, input.status);
 
   // Dealers can't reassign a listing to another seller; admins may.
   const sellerId =
@@ -209,8 +221,6 @@ export async function updateListing(
   const money = await moneyFields(input);
 
   // Slug/publicId are stable (inbound-link safe) — never recomputed on edit.
-  const becomingPublished =
-    input.status === "published" && current.publishedAt == null;
 
   await db
     .update(listings)
@@ -230,9 +240,9 @@ export async function updateListing(
       description: input.description || null,
       locationId: input.locationId,
       sellerId,
-      featured: input.featured,
+      featured: resolveFeatured(user.role, input.featured, current.featured),
       status: input.status,
-      publishedAt: becomingPublished ? new Date() : current.publishedAt,
+      publishedAt: nextPublishedAt(input.status, current.publishedAt, new Date()),
       updatedBy: user.id,
     })
     .where(eq(listings.id, id));
@@ -245,19 +255,23 @@ export async function setListingStatus(
   status: ListingStatus,
 ): Promise<void> {
   const [current] = await db
-    .select({ sellerId: listings.sellerId, publishedAt: listings.publishedAt })
+    .select({
+      sellerId: listings.sellerId,
+      status: listings.status,
+      publishedAt: listings.publishedAt,
+    })
     .from(listings)
     .where(eq(listings.id, id))
     .limit(1);
   if (!current) throw new Error("El aviso no existe.");
   assertCanManageSeller(user, current.sellerId);
+  assertStatusTransition(current.status, status);
 
-  const becomingPublished = status === "published" && current.publishedAt == null;
   await db
     .update(listings)
     .set({
       status,
-      publishedAt: becomingPublished ? new Date() : current.publishedAt,
+      publishedAt: nextPublishedAt(status, current.publishedAt, new Date()),
       updatedBy: user.id,
     })
     .where(eq(listings.id, id));

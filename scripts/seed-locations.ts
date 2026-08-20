@@ -8,8 +8,9 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
-import { locations } from "../src/db/schema";
+import { brands, locations } from "../src/db/schema";
 import { joinSlug, slugify } from "../src/lib/slug";
+import { assertSegmentAvailable } from "../src/lib/venta-namespace";
 
 type Level = "pais" | "departamento" | "ciudad";
 
@@ -78,6 +79,20 @@ const TREE: Node = {
 
 let upserted = 0;
 
+async function namespace() {
+  const [brandRows, cityRows] = await Promise.all([
+    db.select({ slug: brands.slug }).from(brands),
+    db
+      .select({ slug: locations.slug })
+      .from(locations)
+      .where(eq(locations.level, "ciudad")),
+  ]);
+  return {
+    brandSlugs: brandRows.map((b) => b.slug),
+    citySlugs: cityRows.map((c) => c.slug),
+  };
+}
+
 async function insertNode(
   node: Node,
   parentId: number | null,
@@ -86,6 +101,12 @@ async function insertNode(
   const slug = slugify(node.name);
   const fullSlug = joinSlug(parentFullSlug, slug);
   const now = new Date();
+
+  // F24: only `ciudad` rows become /venta segments (getCities filters on it),
+  // so only they can collide with a category/brand/condition word.
+  if (node.level === "ciudad") {
+    assertSegmentAvailable(slug, await namespace(), { kind: "city", slug });
+  }
 
   await db
     .insert(locations)

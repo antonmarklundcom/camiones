@@ -22,6 +22,11 @@ describe("parseCsv", () => {
     expect(rows[0].title).toBe('Camión "Toro" 4x2');
   });
 
+  // From the parallel Batch 0 suite: cell values are trimmed, not just headers.
+  it("trims cell values", () => {
+    expect(parseCsv("marca\n  Scania  ")[0].marca).toBe("Scania");
+  });
+
   it("handles CRLF line endings (Excel exports)", () => {
     const rows = parseCsv("title,year\r\nActros,2019\r\n");
     expect(rows).toEqual([{ title: "Actros", year: "2019" }]);

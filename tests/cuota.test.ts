@@ -82,3 +82,34 @@ describe("bestCuota", () => {
     expect(bestCuota(100_000_000, [])).toBeNull();
   });
 });
+
+/**
+ * Cases carried over from the parallel Batch 0 suite: rate monotonicity, the
+ * empty-programme list, and the two invariants a card depends on — down
+ * payment + financed == price, and whole guaraníes (no fractional currency).
+ */
+describe("bestCuota — carried-over invariants", () => {
+  const priceGs = 380_000_000;
+
+  it("charges more per month at a higher rate", () => {
+    expect(frenchAmortization(100_000_000, 18, 48)).toBeGreaterThan(
+      frenchAmortization(100_000_000, 9, 48),
+    );
+  });
+
+  it("returns null when there are no programs at all", () => {
+    expect(bestCuota(priceGs, [])).toBeNull();
+  });
+
+  it("reports the down payment and financed amount consistently", () => {
+    const r = bestCuota(priceGs, [program({ minDownPct: 25 })])!;
+    expect(r.downPaymentGs).toBe(priceGs * 0.25);
+    expect(r.downPaymentGs + r.financedGs).toBe(priceGs);
+  });
+
+  it("returns whole guaraníes — no fractional currency on a card", () => {
+    const r = bestCuota(priceGs, [program()])!;
+    expect(Number.isInteger(r.monthlyGs)).toBe(true);
+    expect(Number.isInteger(r.financedGs)).toBe(true);
+  });
+});

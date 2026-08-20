@@ -124,6 +124,23 @@ export const listings = mysqlTable(
     index("idx_fresh").on(t.status, t.featured, t.publishedAt),
     index("idx_seller").on(t.sellerId, t.status),
     index("idx_brand").on(t.brandId, t.status),
+    // F14 — indexes shaped like the real /venta queries. Every public grid is
+    // `status='published' AND <one facet> ORDER BY featured DESC, published_at
+    // DESC`, so each facet gets a covering prefix ending in the sort columns.
+    // idx_search can't serve brand-without-category (/venta/scania) because
+    // category sits ahead of brand_id in its column order.
+    index("idx_brand_fresh").on(t.status, t.brandId, t.featured, t.publishedAt),
+    index("idx_city_fresh").on(t.status, t.locationId, t.featured, t.publishedAt),
+    index("idx_cat_fresh").on(t.status, t.category, t.featured, t.publishedAt),
+    index("idx_condition_fresh").on(t.status, t.condition, t.featured, t.publishedAt),
+    index("idx_seller_fresh").on(t.status, t.sellerId, t.featured, t.publishedAt),
+    // Range facets (year/km) and the two low-cardinality spec filters are only
+    // ever combined with the above, so they get plain secondary indexes the
+    // optimizer can use for index-merge or as a fallback driving index.
+    index("idx_year").on(t.status, t.year),
+    index("idx_km").on(t.status, t.km),
+    index("idx_transmission").on(t.status, t.transmission),
+    index("idx_traction").on(t.status, t.traction),
   ],
 );
 
@@ -210,9 +227,14 @@ export const sellers = mysqlTable(
 export const users = mysqlTable("users", {
   id: id(),
   name: varchar("name", { length: 140 }),
-  email: varchar("email", { length: 190 }).unique(),
-  passwordHash: varchar("password_hash", { length: 255 }),
+  // F20: NOT NULL. MySQL's UNIQUE index ignores NULLs, so a nullable email
+  // allowed unlimited credential-less users past the "unique email" rule, and
+  // a NULL password_hash meant a row that login logic had to special-case.
+  email: varchar("email", { length: 190 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: mysqlEnum("role", ["admin", "dealer"]).notNull().default("dealer"),
+  // NULL only for admins. A dealer with NULL seller_id is a broken row: the
+  // admin read scope fails closed on it (src/lib/admin/queries.ts).
   sellerId: fk("seller_id"),
   createdAt: createdAt(),
 });

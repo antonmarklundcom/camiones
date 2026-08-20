@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { categoryBySlug } from "@/lib/taxonomy";
+import { joinSlug, slugify } from "@/lib/slug";
 import {
   absoluteUrl,
   guidePath,
@@ -47,6 +48,16 @@ describe("ventaH1", () => {
     expect(ventaH1({ category: camiones })).toBe("Camiones en Paraguay");
   });
 
+  it("falls back to a generic H1 with no category", () => {
+    expect(ventaH1({})).toBe("Camiones y vehículos de trabajo en Paraguay");
+  });
+
+  it("names the city when there is one", () => {
+    expect(ventaH1({ category: camiones, brand: scania, city: asuncion })).toBe(
+      "Camiones Scania en Asunción",
+    );
+  });
+
   it("agrees the condition adjective with the category gender", () => {
     expect(ventaH1({ category: camionetas, condition: "usado" })).toBe(
       "Camionetas de trabajo usadas en Paraguay",
@@ -84,5 +95,43 @@ describe("siteOrigin", () => {
   it("uses the env host so staging never leaks into canonicals", () => {
     process.env.NEXT_PUBLIC_CANONICAL_HOST = "staging.example.com";
     expect(siteOrigin()).toBe("https://staging.example.com");
+  });
+});
+
+/**
+ * slug.ts backs every stable public URL — a change here silently breaks
+ * inbound links, so the rules are pinned rather than assumed.
+ */
+describe("slugify", () => {
+  it("strips Spanish diacritics", () => {
+    expect(slugify("Asunción")).toBe("asuncion");
+    expect(slugify("Ñeembucú")).toBe("neembucu");
+  });
+
+  it("collapses punctuation and whitespace to single hyphens", () => {
+    expect(slugify("Mercedes-Benz  Actros / 2019")).toBe("mercedes-benz-actros-2019");
+  });
+
+  it("trims leading and trailing hyphens", () => {
+    expect(slugify("  ¡Hola!  ")).toBe("hola");
+  });
+
+  it("caps length at 140 chars to fit the varchar columns", () => {
+    expect(slugify("a".repeat(300))).toHaveLength(140);
+  });
+
+  it("is idempotent — re-slugging a slug is a no-op", () => {
+    const once = slugify("Sinotruk/Howo");
+    expect(slugify(once)).toBe(once);
+  });
+});
+
+describe("joinSlug", () => {
+  it("returns the child alone under an empty parent", () => {
+    expect(joinSlug("", "paraguay")).toBe("paraguay");
+  });
+
+  it("builds the hierarchical full slug", () => {
+    expect(joinSlug("paraguay/central", "luque")).toBe("paraguay/central/luque");
   });
 });

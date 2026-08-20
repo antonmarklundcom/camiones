@@ -9,6 +9,13 @@ const nextConfig: NextConfig = {
     loader: "custom",
     loaderFile: "./src/lib/image-loader.ts",
   },
+  // F10: Next defaults server actions to a 1 MB body, which silently rejected
+  // ordinary 2–6 MB phone photos with an opaque error before our own 12 MB
+  // check ever ran. Raised deliberately; the real protection is the per-file
+  // cap + MIME check in src/lib/uploads.ts, which every upload path calls.
+  experimental: {
+    serverActions: { bodySizeLimit: "15mb" },
+  },
   // Shared-hosting friendly: standalone output keeps the deployed footprint small.
   output: "standalone",
 };

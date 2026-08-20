@@ -136,3 +136,26 @@ describe("queryString", () => {
     expect(queryString(q, { page: "" })).toBe("?year_min=2015");
   });
 });
+
+/**
+ * Cases carried over from the parallel Batch 0 suite. The km_max=0 one is the
+ * load-bearing edge: zero-km is a real search on a truck site, so a falsy
+ * check would drop the filter and quietly widen the result set.
+ */
+describe("parseVentaQuery / toFilters — carried-over edges", () => {
+  it("floors fractional input", () => {
+    expect(parseVentaQuery({ km_max: "1500.9" }).kmMax).toBe(1500);
+  });
+
+  it("treats km_max=0 as a real filter (brand-new, zero-km trucks)", () => {
+    const q = parseVentaQuery({ km_max: "0" });
+    expect(q.kmMax).toBe(0);
+    expect(q.hasFilters).toBe(true);
+  });
+
+  it("leaves unselected facets undefined rather than null", () => {
+    const filters = toFilters({}, parseVentaQuery({}));
+    expect(filters.category).toBeUndefined();
+    expect(filters.brandId).toBeUndefined();
+  });
+});
