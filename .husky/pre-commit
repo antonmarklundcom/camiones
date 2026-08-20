@@ -1,0 +1,8 @@
+# Hard block on GitHub Actions workflows. Zero runner minutes is a locked
+# decision (PLAN.md); a workflow may only be added if Anton says so
+# case-by-case, in which case bypass once with `git commit --no-verify`.
+if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+  echo "✖ .github/workflows/ is not allowed in this repo (zero GitHub Actions minutes)."
+  echo "  See PLAN.md Decisions Log / the zero-runner-deploy policy."
+  exit 1
+fi

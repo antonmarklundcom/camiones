@@ -1,0 +1,8 @@
+# Quality gate — the ONLY gate this project has. There is NO CI: GitHub Actions
+# minutes are budgeted to zero for this repo (PLAN.md Decisions Log), and
+# Hostinger builds from a free webhook. If this hook is slow, keep node_modules
+# and .next/cache warm — do not weaken the gate.
+npm run typecheck
+npm run lint
+npm run test
+npm run build

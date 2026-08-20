@@ -1,3 +1,6 @@
+/* eslint-disable @next/next/no-img-element -- R2 is a plain public bucket
+   with no transform API: images are re-encoded to sized WebP at ingest, so
+   next/image would only add an optimizer hop. Deliberate, see CLAUDE.md. */
 "use client";
 import { useState } from "react";
 

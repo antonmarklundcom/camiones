@@ -179,7 +179,8 @@ async function main() {
         .insert(listings)
         .values(values)
         .onDuplicateKeyUpdate({ set: { ...values } });
-      existing ? updated++ : created++;
+      if (existing) updated++;
+      else created++;
 
       // photos: replace deterministically when the column is present
       const fotos = (rec.fotos ?? "")

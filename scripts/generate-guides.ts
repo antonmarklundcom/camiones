@@ -158,7 +158,8 @@ async function main() {
       .onDuplicateKeyUpdate({
         set: { excerpt: values.excerpt, body: values.body, source: values.source },
       });
-    existing ? updated++ : created++;
+    if (existing) updated++;
+    else created++;
   }
 
   console.log(
