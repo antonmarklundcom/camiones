@@ -16,10 +16,10 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
 
 ## Commands
 
-- `npm run dev` / `build` / `typecheck` / `lint` / `test`
-- `npm run gate` — the full quality gate (typecheck → lint → test → build). The
-  husky `pre-push` hook runs exactly this; `pre-commit` blocks any
-  `.github/workflows/` file. There is NO CI (see the zero-Actions rule below).
+- `npm run dev` / `build` / `typecheck`
+- `npm run lint` (ESLint flat config, `--max-warnings=0` in the gate) / `npm run test`
+  (vitest, `tests/*.test.ts`) / `npm run verify` (typecheck + lint + test + build =
+  exactly what the pre-push hook runs)
 - `npm run db:generate` / `db:migrate` (drizzle-kit; migrations in `drizzle/`)
 - `npm run seed:all` (brands, locations, financing, sample listings, guides — idempotent)
 - `npm run seed:admin` (ADMIN_EMAIL/ADMIN_PASSWORD env). Creating a NEW admin is
@@ -104,6 +104,16 @@ engine/instance seam described in `docs/audit-camiones.md` §6.
   not for lint/tests, not for deploy (Hostinger builds from a free webhook).
   Quality gate is the local husky pre-push hook. A workflow needs Anton's
   explicit case-by-case yes. See the `zero-runner-deploy` skill.
+  **Enforced in code (Batch 0):** `.husky/pre-commit` blocks any staged
+  `.github/workflows/**` file (and any `.env`); `.husky/pre-push` runs
+  `typecheck → lint → test → build` and aborts the push on the first failure.
+  `git push --no-verify` is the deliberate escape hatch — don't make it a habit.
+- **Tests are logic-only, no DB, no browser**: `tests/` covers `cuota.ts`,
+  `urls.ts`, `venta-params.ts` (queries mocked), `csv.ts`, `slug.ts` — the pure
+  functions where a silent regression misquotes money or breaks canonical URLs.
+  Keep the suite sub-second so the hook stays tolerable. No Playwright.
+- `<img>` on R2 photos is deliberate (pass-through loader, prepaid-data budget) —
+  keep the per-site `eslint-disable-next-line @next/next/no-img-element` comments.
 - PR flow (once Batch 0 lands): squash-merge, pre-push hook green before push,
   auto-merge on (branch protection has NO required status check — there is no CI);
   parallel PRs must rebase after each merge; batch order per PLAN.md Phase 6.

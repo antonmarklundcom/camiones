@@ -1,6 +1,3 @@
-/* eslint-disable @next/next/no-img-element -- R2 is a plain public bucket
-   with no transform API: images are re-encoded to sized WebP at ingest, so
-   next/image would only add an optimizer hop. Deliberate, see CLAUDE.md. */
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { countListings, getListingCards, getSellerBySlug, PER_PAGE } from "@/lib/queries";
@@ -87,6 +84,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
       <div className="rounded-xl border border-black/5 bg-white p-6 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-6">
         <div className="flex items-center gap-4">
           {logo && (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={logo}
               alt={`Logo de ${seller.name}`}

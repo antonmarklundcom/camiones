@@ -1,8 +1,19 @@
-# Quality gate — the ONLY gate this project has. There is NO CI: GitHub Actions
-# minutes are budgeted to zero for this repo (PLAN.md Decisions Log), and
-# Hostinger builds from a free webhook. If this hook is slow, keep node_modules
-# and .next/cache warm — do not weaken the gate.
+# LOCAL quality gate — this is the ONLY gate; there is no CI (zero GitHub
+# Actions minutes). Warm node_modules + .next/cache make it faster than a
+# runner anyway. Skip deliberately with `git push --no-verify` only when you
+# know why.
+set -e
+
+echo "▸ typecheck"
 npm run typecheck
+
+echo "▸ lint"
 npm run lint
+
+echo "▸ test"
 npm run test
+
+echo "▸ build (Hostinger auto-deploys main — a broken build breaks prod)"
 npm run build
+
+echo "✓ gate verde — pushing"

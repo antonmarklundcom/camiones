@@ -196,7 +196,21 @@ Additional decisions (locked 2026-08-19, round 2):
 Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Already fixed by PR #5: F7, F18, F22, F29, F30, F4-partial.
 **Ordering rule:** Batch 0 first. Batches 1/2/3/5 may run as parallel PR streams (rebase after each auto-merge; never fire all PRs from one stale base). Batch 4 only after 1–3 are merged. Batch 6 after 4. Template cut after 6. Batch 7 any time after 0.
 
-- [x] **Batch 0 — local quality gate/foundations** (**zero GitHub Actions minutes**): husky `pre-push` running typecheck+build+lint+vitest, husky `pre-commit` blocking any `.github/workflows/` file, ESLint config, vitest skeleton for `cuota.ts`/`csv.ts`/`urls.ts`/`venta-params.ts`/`slug.ts`, CLAUDE.md kept current. Then Anton enables branch protection (no required status check) + auto-merge. **Never create `.github/workflows/` — see the zero-runner-deploy policy.**
+- [x] **Batch 0 — local quality gate/foundations** ✅ 2026-08-20 (**zero GitHub Actions minutes**): husky `pre-push` running typecheck+build+lint+vitest, husky `pre-commit` blocking any `.github/workflows/` file, ESLint config, vitest skeleton for `cuota.ts`/`csv.ts`/`urls.ts`/`venta-params.ts`/`slug.ts`, CLAUDE.md kept current. Then Anton enables branch protection (no required status check) + auto-merge. **Never create `.github/workflows/` — see the zero-runner-deploy policy.**
+      > **As built:** `eslint.config.mjs` (flat config, `next/core-web-vitals` +
+      > `next/typescript`; lint runs `--max-warnings=0`), `vitest.config.ts` +
+      > `tests/` (53 tests over `cuota` / `slug` / `csv` / `urls` / `venta-params`,
+      > DB reads mocked — suite runs in ~1 s), `.husky/pre-commit` (blocks
+      > `.github/workflows/**` and `.env`, both verified by attempting a commit),
+      > `.husky/pre-push` (`typecheck → lint → test → build`), `npm run verify` as
+      > the one-command local gate. Pre-existing lint errors fixed along the way:
+      > unused imports (`queryString`, `waLink`), two raw `<a>` page links on
+      > `/venta` → `<Link>`, `existing ? x++ : y++` expression statements in the
+      > import/guides scripts, anonymous default export in `postcss.config.mjs`.
+      > First-load JS unchanged (111 kB on the heaviest route).
+      > **Still on Anton (hPanel/GitHub UI, not code):** enable branch protection on
+      > `main` with NO required status check + auto-merge; keep Actions disabled and
+      > the billing spending limit at $0.
 - [ ] **Batch 1 — independent fixes** (one small PR each, parallel) — **PARTLY DONE**:
   - [x] session revalidation (F8) — `src/lib/auth/revalidate.ts`, called from `getCurrentUser()`
   - [x] serverActions bodySizeLimit + logo/hero caps (F10) — `src/lib/uploads.ts` + `next.config.ts`
@@ -214,8 +228,8 @@ Source of truth for findings: `docs/audit-camiones.md` (F-numbers below). Alread
 
 > **Correction (2026-08-20):** PR #7 was believed to have landed Batch 0 plus the
 > first five Batch 1 fixes (F1, F6, F9, F10, F13) and the GHL→VenderCRM switch.
-> It did not — PR #7 contains only the decisions/planning updates. Batch 0 was
-> built from scratch in this session; F1/F6/F9/F13 and the CRM switch are still
+> It did not — PR #7 contains only the decisions/planning updates. Batch 0
+> landed separately in PR #9; F1/F6/F9/F13 and the CRM switch are still
 > open and are the next work. Consequence: there is no `leads` table yet, so the
 > "run db:migrate for the leads table" item is not actionable — `drizzle/0002_*`
 > (this session) only touches `users` nullability and `listings` indexes.

@@ -1,19 +1,20 @@
+/**
+ * Vitest covers the pure logic that silently breaks money, URLs and imports:
+ * cuota.ts, urls.ts, venta-params.ts, csv.ts, slug.ts. No DB, no DOM, no
+ * Playwright — the suite must stay fast enough to run in the pre-push hook.
+ */
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
-/**
- * Unit tests only — pure logic (money, URLs, CSV, slugs, policy rules). No
- * Playwright, no DB: the quality gate runs on every push via husky and has to
- * stay fast enough that nobody is tempted to skip it (PLAN.md Batch 0).
- */
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     environment: "node",
+    include: ["tests/**/*.test.ts"],
   },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@app": fileURLToPath(new URL("./app", import.meta.url)),
     },
   },
 });

@@ -1,6 +1,3 @@
-/* eslint-disable @next/next/no-img-element -- R2 is a plain public bucket
-   with no transform API: images are re-encoded to sized WebP at ingest, so
-   next/image would only add an optimizer hop. Deliberate, see CLAUDE.md. */
 "use client";
 import { useState } from "react";
 
@@ -29,6 +26,7 @@ export function Gallery({ images, title }: { images: GalleryImage[]; title: stri
   return (
     <div>
       <div className="overflow-hidden rounded-xl bg-charcoal-100">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={main.url}
           alt={main.alt || title}
@@ -52,6 +50,7 @@ export function Gallery({ images, title }: { images: GalleryImage[]; title: stri
                 i === idx ? "border-amber-brand" : "border-transparent"
               }`}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={img.url}
                 alt=""

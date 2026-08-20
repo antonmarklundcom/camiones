@@ -2,12 +2,17 @@
   "name": "camiones",
   "version": "0.1.0",
   "private": true,
-  "description": "camiones.com.py \u2014 Paraguay truck listings portal.",
+  "description": "camiones.com.py — Paraguay truck listings portal.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
@@ -22,11 +27,7 @@
     "cron:cuotas": "tsx scripts/recompute-cuotas.ts",
     "content:guides": "tsx scripts/generate-guides.ts",
     "placeholders": "tsx scripts/generate-placeholders.ts",
-    "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "gate": "npm run typecheck && npm run lint && npm run test && npm run build",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

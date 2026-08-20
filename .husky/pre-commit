@@ -1,8 +1,21 @@
-# Hard block on GitHub Actions workflows. Zero runner minutes is a locked
-# decision (PLAN.md); a workflow may only be added if Anton says so
-# case-by-case, in which case bypass once with `git commit --no-verify`.
-if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
-  echo "✖ .github/workflows/ is not allowed in this repo (zero GitHub Actions minutes)."
-  echo "  See PLAN.md Decisions Log / the zero-runner-deploy policy."
+# Guard: this repo runs ZERO GitHub Actions minutes (see CLAUDE.md).
+# Deploys happen via Hostinger's own build webhook; correctness is enforced by
+# the pre-push hook below. A workflow file may only land if Anton says so
+# case-by-case — and then this hook gets edited in the same commit, on purpose.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if echo "$staged" | grep -qE '^\.github/workflows/'; then
+  echo ""
+  echo "✗ Bloqueado: .github/workflows/ está prohibido en este repo."
+  echo "  Política 'zero GitHub Actions minutes' (CLAUDE.md · skill zero-runner-deploy)."
+  echo "  El deploy corre en Hostinger vía webhook; el gate de calidad es .husky/pre-push."
+  echo "  Necesita un OK explícito de Anton, caso por caso."
+  echo ""
+  exit 1
+fi
+
+# Never commit real credentials — .env is gitignored, but a forced add slips through.
+if echo "$staged" | grep -qE '(^|/)\.env($|\.)' && ! echo "$staged" | grep -qE '\.env\.example$'; then
+  echo "✗ Bloqueado: no se commitea .env. Actualizá .env.example en su lugar."
   exit 1
 fi
