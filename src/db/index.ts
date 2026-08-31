@@ -10,6 +10,9 @@ import * as schema from "./schema";
 const pool = mysql.createPool({
   uri: process.env.DATABASE_URL,
   connectionLimit: 8,
+  waitForConnections: true,
+  queueLimit: 24,
+  connectTimeout: 8_000,
   timezone: "Z",
 });
 
