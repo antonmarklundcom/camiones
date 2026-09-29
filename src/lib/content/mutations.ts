@@ -9,6 +9,7 @@ import { uploadToR2 } from "@/lib/r2";
 import { assertImageUpload, HERO_LIMITS } from "@/lib/uploads";
 import { excerptFromMarkdown } from "@/lib/content/markdown";
 import type { SessionUser } from "@/lib/auth/session";
+import { loadSharp } from "@/lib/sharp";
 
 export const contentInputSchema = z.object({
   title: z.string().trim().min(3, "Ingresá un título").max(200),
@@ -162,7 +163,7 @@ export async function setContentHero(
   // F10: this path buffers the whole file into memory before sharp sees it.
   assertImageUpload(file, HERO_LIMITS);
 
-  const sharp = (await import("sharp")).default;
+  const sharp = await loadSharp();
   const webp = await sharp(Buffer.from(await file.arrayBuffer()))
     .rotate()
     .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
