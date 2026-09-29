@@ -7,6 +7,7 @@ import { uploadToR2 } from "@/lib/r2";
 import { assertImageUpload, PHOTO_LIMITS } from "@/lib/uploads";
 import type { SessionUser } from "@/lib/auth/session";
 import { assertCanManageSeller } from "@/lib/auth/guard";
+import { loadSharp } from "@/lib/sharp";
 
 async function loadOwnedListing(user: SessionUser, listingId: number) {
   const [row] = await db
@@ -25,7 +26,7 @@ async function loadOwnedListing(user: SessionUser, listingId: number) {
  * data budget, so we shrink at ingest instead of shipping originals.
  */
 async function toWebp(buffer: Buffer): Promise<Buffer> {
-  const sharp = (await import("sharp")).default;
+  const sharp = await loadSharp();
   return sharp(buffer)
     .rotate() // honour EXIF orientation before stripping metadata
     .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })

@@ -9,6 +9,7 @@ import { uploadToR2 } from "@/lib/r2";
 import { assertImageUpload, LOGO_LIMITS } from "@/lib/uploads";
 import type { SessionUser } from "@/lib/auth/session";
 import { assertCanManageSeller } from "@/lib/auth/guard";
+import { loadSharp } from "@/lib/sharp";
 
 export { SELLER_TYPE_LABELS } from "@/lib/admin/constants";
 
@@ -211,7 +212,7 @@ export async function setSellerLogo(
   // F10: this path buffers the whole file into memory before sharp sees it.
   assertImageUpload(file, LOGO_LIMITS);
 
-  const sharp = (await import("sharp")).default;
+  const sharp = await loadSharp();
   const webp = await sharp(Buffer.from(await file.arrayBuffer()))
     .rotate()
     .resize({ width: 600, height: 600, fit: "inside", withoutEnlargement: true })
