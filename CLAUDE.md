@@ -234,3 +234,6 @@ buyer accounts, fork-per-site template, feature-flag set, ESLint/vitest CI,
 admin-only `featured`, moderated self-serve signup in Batch 6 — every listing
 reviewed, admin-only "add from link" in Batch 7, design pass in Batch 8,
 first-party analytics only — no Google/Plausible scripts at launch).
+
+
+VenderCRM configuration migration (2026-10-05): see [persistent server environment](docs/vendercrm-environment.md). Configuration is validated in tracked lib/server modules; hosting environment settings survive source/build redeploys of the same application. Existing capture gates, payloads and local recovery remain unchanged.

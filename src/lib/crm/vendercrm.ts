@@ -10,17 +10,25 @@
 import type { DeliveryResult, LeadRecord, LeadSink } from "@/lib/crm/types";
 import { isPermanentStatus } from "@/lib/crm/types";
 
+import { optionalVenderCrmConfig } from "@/lib/server/vendercrm-settings.mjs";
+
 const TIMEOUT_MS = 10_000;
 
 export function venderCrmSink(): LeadSink {
-  const base = process.env.VENDERCRM_URL?.replace(/\/+$/, "");
-  const key = process.env.VENDERCRM_API_KEY;
+  let config;
+  let configError = false;
+  try { config = optionalVenderCrmConfig(); } catch { configError = true; }
+  const base = config?.baseUrl;
+  const key = config?.apiKey;
 
   return {
     name: "vendercrm",
     configured: Boolean(base && key),
 
     async deliver(lead: LeadRecord): Promise<DeliveryResult> {
+      if (configError) {
+        return { ok: false, permanent: true, detail: "VenderCRM configuración incompleta o inválida" };
+      }
       if (!base || !key) {
         return { ok: false, permanent: true, detail: "VenderCRM sin configurar" };
       }
