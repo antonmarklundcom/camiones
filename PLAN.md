@@ -403,3 +403,6 @@ session has no database):
 - WhatsApp green (#25D366) reserved exclusively for WhatsApp actions.
 - Read PLAN.md first; update it + commit at session end.
 ```
+
+
+VenderCRM configuration migration (2026-10-05): see [persistent server environment](docs/vendercrm-environment.md). Configuration is validated in tracked lib/server modules; hosting environment settings survive source/build redeploys of the same application. Existing capture gates, payloads and local recovery remain unchanged.
